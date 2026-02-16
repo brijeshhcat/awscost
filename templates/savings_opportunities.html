@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}Cost Savings Opportunities — AWS Cost Optimizer{% endblock %}
+{% block page_title %}<i class="bi bi-stars"></i> Cost Savings Opportunities <span class="badge bg-info ms-2" style="font-size:0.65rem; vertical-align:middle;">AI/ML Powered</span>{% endblock %}
+
+{% block content %}
+<!-- Summary bar -->
+<div class="savings-ai-summary card mb-4">
+    <div class="card-body py-3">
+        <div class="row align-items-center">
+            <div class="col-auto">
+                <div class="savings-ai-brain-icon">
+                    <i class="bi bi-cpu"></i>
+                    <div class="savings-ai-brain-pulse"></div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <h6 class="mb-0" id="savingsAIHeadline" style="color: var(--text-primary);">AI Analysis Running...</h6>
+                    <span class="savings-ai-badge-live"><i class="bi bi-broadcast"></i> Real-time</span>
+                </div>
+                <small id="savingsAISummaryText" style="color: var(--text-muted);">
+                    Scanning your AWS account for cost savings opportunities...
+                </small>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-sm btn-outline-info" id="refreshSavingsAI" title="Re-run analysis" disabled>
+                    <i class="bi bi-hourglass-split spin-icon"></i> Analysing...
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter / sort controls -->
+<div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+    <span style="color:var(--text-muted); font-size:0.82rem;"><i class="bi bi-funnel"></i> Filter:</span>
+    <button class="btn btn-sm btn-outline-secondary savings-filter-btn active" data-filter="all">All</button>
+    <button class="btn btn-sm btn-outline-danger savings-filter-btn" data-filter="critical">Critical</button>
+    <button class="btn btn-sm btn-outline-warning savings-filter-btn" data-filter="high">High</button>
+    <button class="btn btn-sm btn-outline-info savings-filter-btn" data-filter="medium">Medium</button>
+    <button class="btn btn-sm btn-outline-secondary savings-filter-btn" data-filter="low">Low</button>
+    <div class="vr mx-1" style="border-color: var(--glass-border);"></div>
+    <span style="color:var(--text-muted); font-size:0.82rem;"><i class="bi bi-sort-down"></i> Sort:</span>
+    <select class="form-select form-select-sm" id="savingsSortSelect" style="width:auto; background:var(--bg-card); border-color:var(--glass-border); color:var(--text-primary); font-size:0.8rem;">
+        <option value="savings">Highest Savings</option>
+        <option value="confidence">Highest Confidence</option>
+        <option value="priority">Priority</option>
+    </select>
+</div>
+
+<!-- Skeleton loader -->
+<div class="row g-3" id="savingsAISkeleton">
+    <div class="col-lg-4 col-md-6"><div class="card"><div class="card-body"><div class="skeleton-line skeleton-w80"></div><div class="skeleton-line skeleton-w60 mt-2"></div><div class="skeleton-block mt-3"></div><div class="skeleton-line skeleton-w40 mt-3"></div></div></div></div>
+    <div class="col-lg-4 col-md-6"><div class="card"><div class="card-body"><div class="skeleton-line skeleton-w80"></div><div class="skeleton-line skeleton-w60 mt-2"></div><div class="skeleton-block mt-3"></div><div class="skeleton-line skeleton-w40 mt-3"></div></div></div></div>
+    <div class="col-lg-4 col-md-6"><div class="card"><div class="card-body"><div class="skeleton-line skeleton-w80"></div><div class="skeleton-line skeleton-w60 mt-2"></div><div class="skeleton-block mt-3"></div><div class="skeleton-line skeleton-w40 mt-3"></div></div></div></div>
+    <div class="col-lg-4 col-md-6"><div class="card"><div class="card-body"><div class="skeleton-line skeleton-w80"></div><div class="skeleton-line skeleton-w60 mt-2"></div><div class="skeleton-block mt-3"></div><div class="skeleton-line skeleton-w40 mt-3"></div></div></div></div>
+    <div class="col-lg-4 col-md-6"><div class="card"><div class="card-body"><div class="skeleton-line skeleton-w80"></div><div class="skeleton-line skeleton-w60 mt-2"></div><div class="skeleton-block mt-3"></div><div class="skeleton-line skeleton-w40 mt-3"></div></div></div></div>
+    <div class="col-lg-4 col-md-6"><div class="card"><div class="card-body"><div class="skeleton-line skeleton-w80"></div><div class="skeleton-line skeleton-w60 mt-2"></div><div class="skeleton-block mt-3"></div><div class="skeleton-line skeleton-w40 mt-3"></div></div></div></div>
+</div>
+
+<!-- Opportunity cards grid (populated by JS) -->
+<div class="row g-3 d-none" id="savingsAIGrid"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ============================================================
+// SAVINGS AI — Full Page Engine
+// ============================================================
+const grid      = document.getElementById('savingsAIGrid');
+const skeleton  = document.getElementById('savingsAISkeleton');
+const headline  = document.getElementById('savingsAIHeadline');
+const summTxt   = document.getElementById('savingsAISummaryText');
+const refreshBtn= document.getElementById('refreshSavingsAI');
+
+let allOpportunities = [];
+const PRIORITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+
+function renderCards(opportunities) {
+    if (!opportunities || opportunities.length === 0) {
+        grid.innerHTML = `<div class="col-12"><div class="card"><div class="card-body text-center py-5">
+            <i class="bi bi-shield-check" style="font-size:3rem;color:var(--accent-cyan);"></i>
+            <h5 class="mt-3" style="color:var(--text-primary);">No Savings Opportunities Found</h5>
+            <p style="color:var(--text-muted);">Your AWS spend looks optimized! The AI engine will continue monitoring.</p></div></div></div>`;
+        return;
+    }
+    const maxSav = Math.max(...opportunities.map(o => o.estimated_savings)) || 1;
+    grid.innerHTML = opportunities.map((o, i) => `
+        <div class="col-lg-4 col-md-6 savings-ai-card-wrapper" data-priority="${o.priority}" style="animation-delay:${i*0.05}s;">
+            <div class="card savings-ai-card savings-ai-priority-${o.priority} h-100" data-savings="${o.estimated_savings}">
+                <div class="savings-ai-ribbon savings-ai-ribbon-${o.priority}">${o.priority.toUpperCase()}</div>
+                <div class="card-body d-flex flex-column">
+                    <div class="d-flex align-items-start gap-3 mb-3">
+                        <div class="savings-ai-icon savings-ai-icon-${o.category}"><i class="bi ${o.icon}"></i></div>
+                        <div class="flex-grow-1">
+                            <h6 class="savings-ai-title mb-1">${o.title}</h6>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <span class="savings-ai-cat-badge">${o.category}</span>
+                                <span class="savings-ai-confidence"><i class="bi bi-bullseye"></i> ${o.confidence}%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="savings-ai-desc flex-grow-1">${o.description}</p>
+                    <div class="savings-ai-savings-bar mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small style="color:var(--text-muted);">Est. Monthly Savings</small>
+                            <span class="savings-ai-savings-value">$${o.estimated_savings.toFixed(2)}</span>
+                        </div>
+                        <div class="savings-ai-progress">
+                            <div class="savings-ai-progress-fill" style="width:${(o.estimated_savings/maxSav*100).toFixed(1)}%;"></div>
+                        </div>
+                    </div>
+                    <div class="savings-ai-actions">
+                        <small style="color:var(--accent-cyan);"><i class="bi bi-lightning-charge"></i> Recommended Actions</small>
+                        <ul class="savings-ai-action-list mt-1">
+                            ${(o.actions||[]).map(a => '<li>'+a+'</li>').join('')}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function getFilteredSorted() {
+    const filterVal = document.querySelector('.savings-filter-btn.active')?.dataset.filter || 'all';
+    const sortVal = document.getElementById('savingsSortSelect').value;
+
+    let filtered = filterVal === 'all'
+        ? [...allOpportunities]
+        : allOpportunities.filter(o => o.priority === filterVal);
+
+    if (sortVal === 'savings') {
+        filtered.sort((a, b) => b.estimated_savings - a.estimated_savings);
+    } else if (sortVal === 'confidence') {
+        filtered.sort((a, b) => b.confidence - a.confidence);
+    } else if (sortVal === 'priority') {
+        filtered.sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9));
+    }
+    return filtered;
+}
+
+function applyFilterSort() {
+    renderCards(getFilteredSorted());
+}
+
+async function loadSavingsAI() {
+    try {
+        const resp = await fetch('/api/cost-savings-ai');
+        const data = await resp.json();
+        skeleton.classList.add('d-none');
+        grid.classList.remove('d-none');
+        allOpportunities = data.opportunities || [];
+        const total = data.total_savings || 0;
+        headline.textContent = 'AI Analysis Complete';
+        summTxt.innerHTML = 'Found <strong style="color:var(--accent-cyan);">' + allOpportunities.length + '</strong> opportunities with up to <strong style="color:var(--accent-cyan);">$' + total.toFixed(2) + '</strong> potential monthly savings';
+        applyFilterSort();
+    } catch (err) {
+        console.error('Savings AI load failed', err);
+        skeleton.classList.add('d-none');
+        grid.classList.remove('d-none');
+        headline.textContent = 'AI Analysis';
+        summTxt.innerHTML = '<span style="color:var(--accent-orange);">Could not load savings analysis. Click Re-analyse to retry.</span>';
+        grid.innerHTML = '';
+    }
+    refreshBtn.disabled = false;
+    refreshBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Re-analyse';
+}
+
+// Auto-load
+loadSavingsAI();
+
+// Re-analyse
+refreshBtn.addEventListener('click', function() {
+    this.disabled = true;
+    this.innerHTML = '<i class="bi bi-hourglass-split spin-icon"></i> Analysing...';
+    headline.textContent = 'AI Analysis Running...';
+    summTxt.textContent = 'Re-scanning your AWS account...';
+    grid.classList.add('d-none');
+    skeleton.classList.remove('d-none');
+    loadSavingsAI();
+});
+
+// Filter buttons
+document.querySelectorAll('.savings-filter-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.savings-filter-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        applyFilterSort();
+    });
+});
+
+// Sort select
+document.getElementById('savingsSortSelect').addEventListener('change', applyFilterSort);
+</script>
+{% endblock %}

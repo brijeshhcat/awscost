@@ -21,14 +21,36 @@ class CostExplorerService:
         return self.session.client("ce")
 
     # ------------------------------------------------------------------ #
-    #  Cost Summary (last 30 days vs previous 30 days)
+    #  Helper: parse date range from request args
     # ------------------------------------------------------------------ #
-    def get_cost_summary(self):
+    @staticmethod
+    def parse_date_range(start_str=None, end_str=None, days=30):
+        """Return (start_date_iso, end_date_iso) from explicit strings or default to last N days."""
         today = datetime.utcnow().date()
-        start_current = (today - timedelta(days=30)).isoformat()
-        end_current = today.isoformat()
-        start_prev = (today - timedelta(days=60)).isoformat()
-        end_prev = (today - timedelta(days=30)).isoformat()
+        if start_str and end_str:
+            return start_str, end_str
+        return (today - timedelta(days=days)).isoformat(), today.isoformat()
+
+    # ------------------------------------------------------------------ #
+    #  Cost Summary (supports custom period)
+    # ------------------------------------------------------------------ #
+    def get_cost_summary(self, start=None, end=None, days=30):
+        today = datetime.utcnow().date()
+        if start and end:
+            start_current = start
+            end_current = end
+            from datetime import date as dt_date
+            d_start = dt_date.fromisoformat(start_current)
+            d_end = dt_date.fromisoformat(end_current)
+            period_days = (d_end - d_start).days or 1
+            start_prev = (d_start - timedelta(days=period_days)).isoformat()
+            end_prev = d_start.isoformat()
+        else:
+            start_current = (today - timedelta(days=days)).isoformat()
+            end_current = today.isoformat()
+            period_days = days
+            start_prev = (today - timedelta(days=days * 2)).isoformat()
+            end_prev = (today - timedelta(days=days)).isoformat()
 
         current = self.ce.get_cost_and_usage(
             TimePeriod={"Start": start_current, "End": end_current},
@@ -76,19 +98,20 @@ class CostExplorerService:
         return {
             "current_total": round(current_total, 2),
             "previous_total": round(previous_total, 2),
-            "daily_average": round(current_total / 30, 2),
+            "daily_average": round(current_total / max(period_days, 1), 2),
             "pct_change": round(pct_change, 2),
             "top_service": top_service,
             "top_service_cost": round(top_service_cost, 2),
+            "period_start": start_current,
+            "period_end": end_current,
+            "period_days": period_days,
         }
 
     # ------------------------------------------------------------------ #
     #  Daily Costs (for chart)
     # ------------------------------------------------------------------ #
-    def get_daily_costs(self, days=30):
-        today = datetime.utcnow().date()
-        start = (today - timedelta(days=days)).isoformat()
-        end = today.isoformat()
+    def get_daily_costs(self, days=30, start=None, end=None):
+        start, end = self.parse_date_range(start, end, days)
 
         resp = self.ce.get_cost_and_usage(
             TimePeriod={"Start": start, "End": end},
@@ -107,11 +130,9 @@ class CostExplorerService:
     # ------------------------------------------------------------------ #
     #  Daily Costs by Service (stacked area / heatmap data)
     # ------------------------------------------------------------------ #
-    def get_daily_costs_by_service(self, days=30, top_n=8):
+    def get_daily_costs_by_service(self, days=30, top_n=8, start=None, end=None):
         """Return daily cost broken down by top N services."""
-        today = datetime.utcnow().date()
-        start = (today - timedelta(days=days)).isoformat()
-        end = today.isoformat()
+        start, end = self.parse_date_range(start, end, days)
 
         resp = self.ce.get_cost_and_usage(
             TimePeriod={"Start": start, "End": end},
@@ -164,10 +185,8 @@ class CostExplorerService:
     # ------------------------------------------------------------------ #
     #  Cost by Service (top 10)
     # ------------------------------------------------------------------ #
-    def get_cost_by_service(self):
-        today = datetime.utcnow().date()
-        start = (today - timedelta(days=30)).isoformat()
-        end = today.isoformat()
+    def get_cost_by_service(self, start=None, end=None, days=30):
+        start, end = self.parse_date_range(start, end, days)
 
         resp = self.ce.get_cost_and_usage(
             TimePeriod={"Start": start, "End": end},
@@ -240,10 +259,8 @@ class CostExplorerService:
     # ------------------------------------------------------------------ #
     #  Cost by Region (top regions, last 30 days)
     # ------------------------------------------------------------------ #
-    def get_cost_by_region(self):
-        today = datetime.utcnow().date()
-        start = (today - timedelta(days=30)).isoformat()
-        end = today.isoformat()
+    def get_cost_by_region(self, start=None, end=None, days=30):
+        start, end = self.parse_date_range(start, end, days)
 
         resp = self.ce.get_cost_and_usage(
             TimePeriod={"Start": start, "End": end},
@@ -268,10 +285,8 @@ class CostExplorerService:
     # ------------------------------------------------------------------ #
     #  Cost by Linked Account (for Organizations)
     # ------------------------------------------------------------------ #
-    def get_cost_by_account(self):
-        today = datetime.utcnow().date()
-        start = (today - timedelta(days=30)).isoformat()
-        end = today.isoformat()
+    def get_cost_by_account(self, start=None, end=None, days=30):
+        start, end = self.parse_date_range(start, end, days)
 
         try:
             resp = self.ce.get_cost_and_usage(
@@ -299,10 +314,8 @@ class CostExplorerService:
     # ------------------------------------------------------------------ #
     #  Cost by Usage Type (for detailed analysis)
     # ------------------------------------------------------------------ #
-    def get_cost_by_usage_type(self, top_n=15):
-        today = datetime.utcnow().date()
-        start = (today - timedelta(days=30)).isoformat()
-        end = today.isoformat()
+    def get_cost_by_usage_type(self, top_n=15, start=None, end=None, days=30):
+        start, end = self.parse_date_range(start, end, days)
 
         resp = self.ce.get_cost_and_usage(
             TimePeriod={"Start": start, "End": end},

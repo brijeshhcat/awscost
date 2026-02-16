@@ -3,64 +3,110 @@
 {% block page_title %}<i class="bi bi-speedometer2"></i> Cost Dashboard{% endblock %}
 
 {% block content %}
-<!-- ========== KPI CARDS ========== -->
+<!-- ========== PERIOD SELECTOR ========== -->
+<div class="period-selector-bar mb-4">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="period-label"><i class="bi bi-calendar3"></i> Period:</span>
+        <div class="btn-group period-btn-group" role="group">
+            <a href="/?period=7d" class="btn btn-sm {{ 'btn-accent active' if current_period == '7d' else 'btn-outline-secondary' }}">7 Days</a>
+            <a href="/?period=14d" class="btn btn-sm {{ 'btn-accent active' if current_period == '14d' else 'btn-outline-secondary' }}">14 Days</a>
+            <a href="/?period=30d" class="btn btn-sm {{ 'btn-accent active' if current_period == '30d' else 'btn-outline-secondary' }}">30 Days</a>
+            <a href="/?period=last_month" class="btn btn-sm {{ 'btn-accent active' if current_period == 'last_month' else 'btn-outline-secondary' }}">Last Month</a>
+            <a href="/?period=3m" class="btn btn-sm {{ 'btn-accent active' if current_period == '3m' else 'btn-outline-secondary' }}">3 Months</a>
+            <a href="/?period=6m" class="btn btn-sm {{ 'btn-accent active' if current_period == '6m' else 'btn-outline-secondary' }}">6 Months</a>
+            <a href="/?period=ytd" class="btn btn-sm {{ 'btn-accent active' if current_period == 'ytd' else 'btn-outline-secondary' }}">YTD</a>
+            <a href="/?period=12m" class="btn btn-sm {{ 'btn-accent active' if current_period == '12m' else 'btn-outline-secondary' }}">12 Months</a>
+        </div>
+        <div class="vr mx-1" style="border-color: var(--glass-border);"></div>
+        <form class="d-flex align-items-center gap-2 custom-range-form" method="get" action="/">
+            <input type="hidden" name="period" value="custom">
+            <label class="period-label mb-0" style="font-size:0.78rem;">From</label>
+            <input type="date" name="start" class="form-control form-control-sm period-date-input" value="{{ period_start or '' }}">
+            <label class="period-label mb-0" style="font-size:0.78rem;">To</label>
+            <input type="date" name="end" class="form-control form-control-sm period-date-input" value="{{ period_end or '' }}">
+            <button type="submit" class="btn btn-sm btn-outline-info"><i class="bi bi-search"></i> Go</button>
+        </form>
+    </div>
+    {% if period_start and period_end %}
+    <div class="mt-2">
+        <small class="text-muted"><i class="bi bi-info-circle"></i> Showing data from <strong style="color:var(--accent-cyan);">{{ period_start }}</strong> to <strong style="color:var(--accent-cyan);">{{ period_end }}</strong>
+        {% if summary and summary.period_days is defined %} ({{ summary.period_days }} days){% endif %}
+        </small>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ========== KPI CARDS with 3D tilt ========== -->
 <div class="row g-3 mb-4">
     <div class="col-md-3">
-        <div class="card kpi-card kpi-cyan h-100">
-            <div class="card-body">
+        <div class="card kpi-card kpi-cyan kpi-3d h-100" data-tilt>
+            <div class="kpi-glow kpi-glow-cyan"></div>
+            <div class="card-body position-relative">
+                <div class="kpi-sparkline" id="sparkPeriod"></div>
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <div class="kpi-label">Last 30 Days Spend</div>
-                        <div class="kpi-value text-cyan">${{ summary.current_total|default('0.00') }}</div>
+                        <div class="kpi-label">Period Spend</div>
+                        <div class="kpi-value text-cyan kpi-counter" data-target="{{ summary.current_total|default(0) }}">${{ summary.current_total|default('0.00') }}</div>
                     </div>
-                    <i class="bi bi-currency-dollar kpi-icon" style="color: var(--accent-cyan);"></i>
+                    <div class="kpi-icon-3d">
+                        <i class="bi bi-currency-dollar"></i>
+                    </div>
                 </div>
                 {% if summary and summary.pct_change is defined %}
-                <span class="badge {{ 'bg-danger' if summary.pct_change > 0 else 'bg-success' }} mt-2">
+                <span class="badge {{ 'bg-danger' if summary.pct_change > 0 else 'bg-success' }} mt-2 badge-glow">
                     <i class="bi {{ 'bi-arrow-up' if summary.pct_change > 0 else 'bi-arrow-down' }}"></i>
-                    {{ summary.pct_change }}% vs prev 30d
+                    {{ summary.pct_change }}% vs prev period
                 </span>
                 {% endif %}
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card kpi-card kpi-orange h-100">
-            <div class="card-body">
+        <div class="card kpi-card kpi-orange kpi-3d h-100" data-tilt>
+            <div class="kpi-glow kpi-glow-orange"></div>
+            <div class="card-body position-relative">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="kpi-label">Daily Average</div>
-                        <div class="kpi-value text-orange">${{ summary.daily_average|default('0.00') }}</div>
+                        <div class="kpi-value text-orange kpi-counter" data-target="{{ summary.daily_average|default(0) }}">${{ summary.daily_average|default('0.00') }}</div>
                     </div>
-                    <i class="bi bi-calendar-day kpi-icon" style="color: var(--accent-orange);"></i>
+                    <div class="kpi-icon-3d kpi-icon-3d-orange">
+                        <i class="bi bi-calendar-day"></i>
+                    </div>
                 </div>
-                <small style="color: var(--text-muted);">Last 30 days average</small>
+                <small style="color: var(--text-muted);">Avg over selected period</small>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card kpi-card kpi-purple h-100">
-            <div class="card-body">
+        <div class="card kpi-card kpi-purple kpi-3d h-100" data-tilt>
+            <div class="kpi-glow kpi-glow-purple"></div>
+            <div class="card-body position-relative">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="kpi-label">Top Service</div>
                         <div class="kpi-value text-purple" style="font-size:1.1rem;">{{ summary.top_service|default('N/A') }}</div>
                     </div>
-                    <i class="bi bi-trophy kpi-icon" style="color: var(--accent-purple);"></i>
+                    <div class="kpi-icon-3d kpi-icon-3d-purple">
+                        <i class="bi bi-trophy"></i>
+                    </div>
                 </div>
                 <span style="color: var(--accent-purple);">${{ summary.top_service_cost|default('0.00') }}</span>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card kpi-card kpi-blue h-100">
-            <div class="card-body">
+        <div class="card kpi-card kpi-blue kpi-3d h-100" data-tilt>
+            <div class="kpi-glow kpi-glow-blue"></div>
+            <div class="card-body position-relative">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <div class="kpi-label">Previous 30 Days</div>
-                        <div class="kpi-value text-blue">${{ summary.previous_total|default('0.00') }}</div>
+                        <div class="kpi-label">Previous Period</div>
+                        <div class="kpi-value text-blue kpi-counter" data-target="{{ summary.previous_total|default(0) }}">${{ summary.previous_total|default('0.00') }}</div>
                     </div>
-                    <i class="bi bi-clock-history kpi-icon" style="color: var(--accent-blue);"></i>
+                    <div class="kpi-icon-3d kpi-icon-3d-blue">
+                        <i class="bi bi-clock-history"></i>
+                    </div>
                 </div>
                 <small style="color: var(--text-muted);">Comparison period</small>
             </div>
@@ -165,36 +211,54 @@
 <div class="section-title"><i class="bi bi-activity"></i> Daily Spend Analysis</div>
 <div class="row g-3 mb-4">
     <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-graph-up"></i> Daily Cost Trend (Last 30 Days)
+        <div class="card chart-card-3d">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-graph-up"></i> Daily Cost Trend</span>
+                <div class="chart-type-switcher" data-chart-id="dailyCostChart">
+                    <button class="chart-switch-btn active" data-type="line" title="Line"><i class="bi bi-graph-up"></i></button>
+                    <button class="chart-switch-btn" data-type="bar" title="Bar"><i class="bi bi-bar-chart"></i></button>
+                    <button class="chart-switch-btn" data-type="area" title="Area"><i class="bi bi-graph-down"></i></button>
+                    <button class="chart-switch-btn" data-type="radar" title="Radar"><i class="bi bi-pentagon"></i></button>
+                </div>
             </div>
-            <div class="card-body" style="height:320px;">
+            <div class="card-body chart-body-glow" style="height:340px;">
                 <canvas id="dailyCostChart"></canvas>
             </div>
         </div>
     </div>
     <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-pie-chart"></i> Cost by Service (Top 10)
+        <div class="card chart-card-3d">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-pie-chart"></i> Cost by Service</span>
+                <div class="chart-type-switcher" data-chart-id="serviceCostChart">
+                    <button class="chart-switch-btn active" data-type="doughnut" title="Doughnut"><i class="bi bi-pie-chart"></i></button>
+                    <button class="chart-switch-btn" data-type="pie" title="Pie"><i class="bi bi-circle-half"></i></button>
+                    <button class="chart-switch-btn" data-type="bar" title="Bar"><i class="bi bi-bar-chart"></i></button>
+                    <button class="chart-switch-btn" data-type="polarArea" title="Polar"><i class="bi bi-bullseye"></i></button>
+                </div>
             </div>
-            <div class="card-body" style="height:320px;">
+            <div class="card-body chart-body-glow" style="height:340px;">
                 <canvas id="serviceCostChart"></canvas>
             </div>
         </div>
     </div>
 </div>
 
-<!-- ========== AWS CONSOLE-STYLE: COST BY REGION + COST BY ACCOUNT ========== -->
+<!-- ========== COST DISTRIBUTION ========== -->
 <div class="section-title"><i class="bi bi-globe2"></i> Cost Distribution (Console View)</div>
 <div class="row g-3 mb-4">
     <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-geo-alt"></i> Cost by Region
+        <div class="card chart-card-3d">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-geo-alt"></i> Cost by Region</span>
+                <div class="chart-type-switcher" data-chart-id="regionCostChart">
+                    <button class="chart-switch-btn active" data-type="horizontalBar" title="H-Bar"><i class="bi bi-bar-chart-steps"></i></button>
+                    <button class="chart-switch-btn" data-type="bar" title="Bar"><i class="bi bi-bar-chart"></i></button>
+                    <button class="chart-switch-btn" data-type="doughnut" title="Doughnut"><i class="bi bi-pie-chart"></i></button>
+                    <button class="chart-switch-btn" data-type="polarArea" title="Polar"><i class="bi bi-bullseye"></i></button>
+                </div>
             </div>
-            <div class="card-body" style="height:340px;">
+            <div class="card-body chart-body-glow" style="height:340px;">
                 <canvas id="regionCostChart"></canvas>
             </div>
         </div>
@@ -257,16 +321,23 @@
     </div>
 </div>
 
-<!-- ========== DAILY COST BY SERVICE (Stacked Area) ========== -->
+<!-- ========== DAILY COST BY SERVICE (Stacked) ========== -->
 <div class="section-title"><i class="bi bi-layers"></i> Daily Cost by Service</div>
 <div class="row g-3 mb-4">
     <div class="col-12">
-        <div class="card">
+        <div class="card chart-card-3d">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-stack"></i> Daily Service Cost Breakdown</span>
-                <span class="badge bg-info">Last 30 Days</span>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-info">Selected Period</span>
+                    <div class="chart-type-switcher" data-chart-id="dailyServiceChart">
+                        <button class="chart-switch-btn active" data-type="stackedArea" title="Stacked Area"><i class="bi bi-graph-down"></i></button>
+                        <button class="chart-switch-btn" data-type="stackedBar" title="Stacked Bar"><i class="bi bi-bar-chart-fill"></i></button>
+                        <button class="chart-switch-btn" data-type="line" title="Line"><i class="bi bi-graph-up"></i></button>
+                    </div>
+                </div>
             </div>
-            <div class="card-body" style="height:380px;">
+            <div class="card-body chart-body-glow" style="height:400px;">
                 <canvas id="dailyServiceChart"></canvas>
             </div>
         </div>
@@ -277,11 +348,17 @@
 <div class="section-title"><i class="bi bi-calendar3"></i> Monthly Cost Overview</div>
 <div class="row g-3 mb-4">
     <div class="col-md-7">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-bar-chart"></i> Monthly Cost Trend (Last 6 Months)
+        <div class="card chart-card-3d">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-bar-chart"></i> Monthly Cost Trend</span>
+                <div class="chart-type-switcher" data-chart-id="monthlyCostChart">
+                    <button class="chart-switch-btn active" data-type="bar" title="Bar"><i class="bi bi-bar-chart"></i></button>
+                    <button class="chart-switch-btn" data-type="line" title="Line"><i class="bi bi-graph-up"></i></button>
+                    <button class="chart-switch-btn" data-type="area" title="Area"><i class="bi bi-graph-down"></i></button>
+                    <button class="chart-switch-btn" data-type="radar" title="Radar"><i class="bi bi-pentagon"></i></button>
+                </div>
             </div>
-            <div class="card-body" style="height:320px;">
+            <div class="card-body chart-body-glow" style="height:340px;">
                 <canvas id="monthlyCostChart"></canvas>
             </div>
         </div>
@@ -383,7 +460,7 @@
     <div class="col-md-7">
         <div class="card">
             <div class="card-header">
-                <i class="bi bi-list-ul"></i> Service Cost Breakdown (30 Days)
+                <i class="bi bi-list-ul"></i> Service Cost Breakdown
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -445,197 +522,478 @@
 
 {% block scripts %}
 <script>
-// ---- Chart.js global defaults for dark theme ----
+// ============================================================
+// NEXT-GEN DASHBOARD ENGINE — Switchable Charts + 3D Effects
+// ============================================================
+
+// ---- Period params ----
+const PERIOD_START = '{{ period_start or '' }}';
+const PERIOD_END = '{{ period_end or '' }}';
+function apiUrl(base) {
+    if (PERIOD_START && PERIOD_END) return base + '?start=' + PERIOD_START + '&end=' + PERIOD_END;
+    return base;
+}
+
+// ---- Chart.js Defaults ----
 Chart.defaults.color = '#94a3b8';
 Chart.defaults.borderColor = 'rgba(255,255,255,0.04)';
 Chart.defaults.font.family = "'Inter', sans-serif";
-
 const PALETTE = ['#06d6a0','#4cc9f0','#7b61ff','#f72585','#ff9e00','#fbbf24','#20c997','#0d6efd','#ef476f','#6c757d'];
+const TOOLTIP_STYLE = {
+    backgroundColor: 'rgba(10,14,23,0.95)', borderColor: 'rgba(6,214,160,0.3)', borderWidth: 1,
+    titleColor: '#e2e8f0', bodyColor: '#06d6a0', titleFont: { weight: '700', size: 12 },
+    cornerRadius: 10, padding: 12, displayColors: true,
+    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+};
 
-// ---- Daily Cost Line ----
-fetch('/api/daily-costs')
-    .then(r => r.json())
-    .then(data => {
-        const ctx = document.getElementById('dailyCostChart');
-        const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 300);
-        gradient.addColorStop(0, 'rgba(6,214,160,0.25)');
-        gradient.addColorStop(1, 'rgba(6,214,160,0)');
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: data.map(d => d.date),
-                datasets: [{
-                    label: 'Daily Cost ($)',
-                    data: data.map(d => d.cost),
-                    borderColor: '#06d6a0',
-                    backgroundColor: gradient,
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 0,
-                    pointHoverRadius: 5,
-                    pointHoverBackgroundColor: '#06d6a0',
-                    borderWidth: 2.5,
-                }]
+// ---- Store chart instances + raw data for re-rendering ----
+const chartInstances = {};
+const chartDataStore = {};
+
+function destroyChart(id) {
+    if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; }
+}
+
+function createGradient(ctx, color, h) {
+    const g = ctx.createLinearGradient(0, 0, 0, h || 300);
+    g.addColorStop(0, color.replace(')', ',0.3)').replace('rgb', 'rgba'));
+    g.addColorStop(1, color.replace(')', ',0)').replace('rgb', 'rgba'));
+    return g;
+}
+
+function hexToRgba(hex, a) {
+    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${a})`;
+}
+
+// ==========================
+// DAILY COST CHART
+// ==========================
+function renderDailyCost(type) {
+    const data = chartDataStore.dailyCost;
+    if (!data) return;
+    destroyChart('dailyCostChart');
+    const el = document.getElementById('dailyCostChart');
+    const ctx2d = el.getContext('2d');
+    const gradient = ctx2d.createLinearGradient(0, 0, 0, 320);
+    gradient.addColorStop(0, 'rgba(6,214,160,0.25)');
+    gradient.addColorStop(1, 'rgba(6,214,160,0)');
+
+    let chartType = type === 'area' ? 'line' : (type === 'radar' ? 'radar' : type);
+    let config = {
+        type: chartType,
+        data: {
+            labels: data.map(d => d.date),
+            datasets: [{
+                label: 'Daily Cost ($)',
+                data: data.map(d => d.cost),
+                borderColor: '#06d6a0',
+                backgroundColor: (type === 'area' || type === 'line') ? gradient : hexToRgba('#06d6a0', 0.6),
+                fill: type === 'area',
+                tension: 0.4,
+                pointRadius: type === 'line' || type === 'area' ? 0 : 3,
+                pointHoverRadius: 6,
+                pointHoverBackgroundColor: '#06d6a0',
+                borderWidth: 2.5,
+                borderRadius: type === 'bar' ? 8 : 0,
+                barThickness: type === 'bar' ? undefined : undefined,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            animation: { duration: 800, easing: 'easeOutQuart' },
+            plugins: {
+                legend: { display: false },
+                tooltip: { ...TOOLTIP_STYLE, callbacks: { label: c => '$ ' + c.parsed.y.toFixed(2) } }
             },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: 'rgba(17,24,39,0.9)',
-                        borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
-                        titleColor: '#e2e8f0', bodyColor: '#06d6a0', titleFont: { weight: '600' },
-                        callbacks: { label: ctx => '$ ' + ctx.parsed.y.toFixed(2) }
-                    }
-                },
-                interaction: { intersect: false, mode: 'index' },
-                scales: {
-                    x: { grid: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 10 } } },
-                    y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$' + v, font: { size: 10 } } }
-                }
-            }
-        });
-    });
+            interaction: { intersect: false, mode: 'index' },
+            scales: chartType !== 'radar' ? {
+                x: { grid: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+                y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$'+v, font: { size: 10 } } }
+            } : {}
+        }
+    };
+    chartInstances['dailyCostChart'] = new Chart(el, config);
+}
 
-// ---- Service Doughnut ----
-fetch('/api/service-costs')
-    .then(r => r.json())
-    .then(data => {
-        new Chart(document.getElementById('serviceCostChart'), {
-            type: 'doughnut',
-            data: {
-                labels: data.map(d => d.service),
-                datasets: [{
-                    data: data.map(d => d.cost),
-                    backgroundColor: PALETTE.slice(0, data.length),
-                    borderWidth: 0, hoverOffset: 8,
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false, cutout: '65%',
-                plugins: {
-                    legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'circle' } },
-                    tooltip: {
-                        backgroundColor: 'rgba(17,24,39,0.9)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
-                        callbacks: { label: ctx => ctx.label + ': $' + ctx.parsed.toFixed(2) }
-                    }
-                }
-            }
-        });
-    });
+fetch(apiUrl('/api/daily-costs')).then(r => r.json()).then(data => {
+    chartDataStore.dailyCost = data;
+    renderDailyCost('line');
+});
 
-// ---- Region Cost Horizontal Bar ----
-fetch('/api/region-costs')
-    .then(r => r.json())
-    .then(data => {
-        new Chart(document.getElementById('regionCostChart'), {
+// ==========================
+// SERVICE COST CHART
+// ==========================
+function renderServiceCost(type) {
+    const data = chartDataStore.serviceCost;
+    if (!data) return;
+    destroyChart('serviceCostChart');
+    const el = document.getElementById('serviceCostChart');
+    let config;
+    if (type === 'bar') {
+        config = {
             type: 'bar',
             data: {
-                labels: data.map(d => d.region),
+                labels: data.map(d => d.service.replace('Amazon ','').replace('AWS ','')),
                 datasets: [{
-                    label: 'Cost ($)',
                     data: data.map(d => d.cost),
-                    backgroundColor: data.map((_, i) => PALETTE[i % PALETTE.length] + '99'),
-                    borderColor: data.map((_, i) => PALETTE[i % PALETTE.length]),
-                    borderWidth: 1.5, borderRadius: 6, barThickness: 22,
+                    backgroundColor: PALETTE.slice(0, data.length).map(c => hexToRgba(c, 0.7)),
+                    borderColor: PALETTE.slice(0, data.length),
+                    borderWidth: 1.5, borderRadius: 8,
                 }]
             },
             options: {
                 indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: 'rgba(17,24,39,0.9)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
-                        callbacks: { label: ctx => '$ ' + ctx.parsed.x.toFixed(2) }
-                    }
-                },
+                animation: { duration: 800, easing: 'easeOutQuart' },
+                plugins: { legend: { display: false }, tooltip: { ...TOOLTIP_STYLE, callbacks: { label: c => '$ ' + c.parsed.x.toFixed(2) } } },
                 scales: {
-                    x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$' + v, font: { size: 10 } } },
-                    y: { grid: { display: false }, ticks: { font: { size: 10 } } }
+                    x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$'+v, font: { size: 10 } } },
+                    y: { grid: { display: false }, ticks: { font: { size: 9 } } }
                 }
             }
-        });
-    });
-
-// ---- Daily Service Cost (Stacked Area Chart) ----
-fetch('/api/daily-service-costs')
-    .then(r => r.json())
-    .then(data => {
-        const ctx = document.getElementById('dailyServiceChart');
-        const datasets = data.services.map((svc, i) => {
-            const c = PALETTE[i % PALETTE.length];
-            return {
-                label: svc.service.replace('Amazon ', '').replace('AWS ', ''),
-                data: svc.costs, borderColor: c, backgroundColor: c + '30',
-                fill: true, tension: 0.3, pointRadius: 0, pointHoverRadius: 4, borderWidth: 1.5,
-            };
-        });
-        if (data.other && data.other.some(v => v > 0)) {
-            datasets.push({
-                label: 'Other', data: data.other, borderColor: '#6c757d',
-                backgroundColor: 'rgba(108,117,125,0.15)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1,
-            });
-        }
-        new Chart(ctx, {
-            type: 'line',
-            data: { labels: data.dates, datasets: datasets },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'circle' } },
-                    tooltip: {
-                        mode: 'index', intersect: false,
-                        backgroundColor: 'rgba(17,24,39,0.9)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
-                        callbacks: { label: ctx => ctx.dataset.label + ': $' + ctx.parsed.y.toFixed(2) }
-                    }
-                },
-                interaction: { intersect: false, mode: 'index' },
-                scales: {
-                    x: { stacked: true, grid: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 10 } } },
-                    y: { stacked: true, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$' + v, font: { size: 10 } } }
-                }
-            }
-        });
-    });
-
-// ---- Monthly Cost Bar ----
-fetch('/api/monthly-costs')
-    .then(r => r.json())
-    .then(data => {
-        const totals = data.totals || [];
-        new Chart(document.getElementById('monthlyCostChart'), {
-            type: 'bar',
+        };
+    } else {
+        config = {
+            type: type,
             data: {
-                labels: totals.map(d => d.month),
+                labels: data.map(d => d.service.replace('Amazon ','').replace('AWS ','')),
                 datasets: [{
-                    label: 'Monthly Cost ($)',
-                    data: totals.map(d => d.cost),
-                    backgroundColor: totals.map((d, i, arr) => {
-                        if (i === 0) return 'rgba(6,214,160,0.7)';
-                        return d.cost > arr[i-1].cost ? 'rgba(239,71,111,0.7)' : 'rgba(6,214,160,0.7)';
-                    }),
-                    borderColor: totals.map((d, i, arr) => {
-                        if (i === 0) return '#06d6a0';
-                        return d.cost > arr[i-1].cost ? '#ef476f' : '#06d6a0';
-                    }),
-                    borderWidth: 1.5, borderRadius: 6, barThickness: 36,
+                    data: data.map(d => d.cost),
+                    backgroundColor: PALETTE.slice(0, data.length),
+                    borderWidth: type === 'polarArea' ? 1 : 0, hoverOffset: 12,
+                    borderColor: type === 'polarArea' ? PALETTE.slice(0, data.length) : undefined,
                 }]
             },
             options: {
-                responsive: true, maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false, cutout: type === 'doughnut' ? '68%' : 0,
+                animation: { animateRotate: true, duration: 1000, easing: 'easeOutQuart' },
                 plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: 'rgba(17,24,39,0.9)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
-                        callbacks: { label: ctx => '$ ' + ctx.parsed.y.toFixed(2) }
-                    }
-                },
-                scales: {
-                    x: { grid: { display: false }, ticks: { font: { size: 10 } } },
-                    y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$' + v, font: { size: 10 } } }
+                    legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9 }, padding: 6, usePointStyle: true, pointStyle: 'circle' } },
+                    tooltip: { ...TOOLTIP_STYLE, callbacks: { label: c => c.label + ': $' + c.parsed.toFixed(2) } }
+                }
+            }
+        };
+    }
+    chartInstances['serviceCostChart'] = new Chart(el, config);
+}
+
+fetch(apiUrl('/api/service-costs')).then(r => r.json()).then(data => {
+    chartDataStore.serviceCost = data;
+    renderServiceCost('doughnut');
+});
+
+// ==========================
+// REGION COST CHART
+// ==========================
+function renderRegionCost(type) {
+    const data = chartDataStore.regionCost;
+    if (!data) return;
+    destroyChart('regionCostChart');
+    const el = document.getElementById('regionCostChart');
+    const labels = data.map(d => d.region);
+    const values = data.map(d => d.cost);
+
+    if (type === 'doughnut' || type === 'polarArea') {
+        chartInstances['regionCostChart'] = new Chart(el, {
+            type: type,
+            data: { labels, datasets: [{ data: values, backgroundColor: PALETTE.slice(0, data.length), borderWidth: 1, hoverOffset: 10 }] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                animation: { duration: 900, easing: 'easeOutQuart' },
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9 }, padding: 5, usePointStyle: true } },
+                    tooltip: { ...TOOLTIP_STYLE, callbacks: { label: c => c.label + ': $' + c.parsed.toFixed(2) } }
                 }
             }
         });
+    } else {
+        const isHorizontal = (type === 'horizontalBar');
+        chartInstances['regionCostChart'] = new Chart(el, {
+            type: 'bar',
+            data: {
+                labels, datasets: [{
+                    label: 'Cost ($)', data: values,
+                    backgroundColor: data.map((_, i) => hexToRgba(PALETTE[i % PALETTE.length], 0.65)),
+                    borderColor: data.map((_, i) => PALETTE[i % PALETTE.length]),
+                    borderWidth: 1.5, borderRadius: 8, barThickness: 22,
+                }]
+            },
+            options: {
+                indexAxis: isHorizontal ? 'y' : 'x',
+                responsive: true, maintainAspectRatio: false,
+                animation: { duration: 800, easing: 'easeOutQuart' },
+                plugins: { legend: { display: false }, tooltip: { ...TOOLTIP_STYLE, callbacks: { label: c => '$ ' + (isHorizontal ? c.parsed.x : c.parsed.y).toFixed(2) } } },
+                scales: {
+                    x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$'+v, font: { size: 10 } } },
+                    y: { grid: { display: false }, ticks: { font: { size: 9 } } }
+                }
+            }
+        });
+    }
+}
+
+fetch(apiUrl('/api/region-costs')).then(r => r.json()).then(data => {
+    chartDataStore.regionCost = data;
+    renderRegionCost('horizontalBar');
+});
+
+// ==========================
+// DAILY SERVICE COST
+// ==========================
+function renderDailyService(type) {
+    const data = chartDataStore.dailyService;
+    if (!data) return;
+    destroyChart('dailyServiceChart');
+    const el = document.getElementById('dailyServiceChart');
+    const isStacked = type === 'stackedArea' || type === 'stackedBar';
+    const chartType = (type === 'stackedBar') ? 'bar' : 'line';
+
+    const datasets = data.services.map((svc, i) => {
+        const c = PALETTE[i % PALETTE.length];
+        return {
+            label: svc.service.replace('Amazon ','').replace('AWS ',''),
+            data: svc.costs,
+            borderColor: c,
+            backgroundColor: chartType === 'bar' ? hexToRgba(c, 0.65) : hexToRgba(c, 0.15),
+            fill: type === 'stackedArea',
+            tension: 0.3, pointRadius: 0, pointHoverRadius: 4, borderWidth: 1.5,
+            borderRadius: chartType === 'bar' ? 4 : 0,
+        };
     });
+    if (data.other && data.other.some(v => v > 0)) {
+        datasets.push({
+            label: 'Other', data: data.other, borderColor: '#6c757d',
+            backgroundColor: chartType === 'bar' ? 'rgba(108,117,125,0.5)' : 'rgba(108,117,125,0.1)',
+            fill: type === 'stackedArea', tension: 0.3, pointRadius: 0, borderWidth: 1,
+        });
+    }
+    chartInstances['dailyServiceChart'] = new Chart(el, {
+        type: chartType,
+        data: { labels: data.dates, datasets },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            animation: { duration: 900, easing: 'easeOutQuart' },
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'circle' } },
+                tooltip: { mode: 'index', intersect: false, ...TOOLTIP_STYLE, callbacks: { label: c => c.dataset.label + ': $' + c.parsed.y.toFixed(2) } }
+            },
+            interaction: { intersect: false, mode: 'index' },
+            scales: {
+                x: { stacked: isStacked, grid: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+                y: { stacked: isStacked, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$'+v, font: { size: 10 } } }
+            }
+        }
+    });
+}
+
+fetch(apiUrl('/api/daily-service-costs')).then(r => r.json()).then(data => {
+    chartDataStore.dailyService = data;
+    renderDailyService('stackedArea');
+});
+
+// ==========================
+// MONTHLY COST CHART
+// ==========================
+function renderMonthlyCost(type) {
+    const data = chartDataStore.monthlyCost;
+    if (!data) return;
+    destroyChart('monthlyCostChart');
+    const el = document.getElementById('monthlyCostChart');
+    const totals = data.totals || [];
+    const labels = totals.map(d => d.month);
+    const values = totals.map(d => d.cost);
+    const ctx2d = el.getContext('2d');
+
+    let chartType = type === 'area' ? 'line' : (type === 'radar' ? 'radar' : type);
+    const gradient = ctx2d.createLinearGradient(0, 0, 0, 320);
+    gradient.addColorStop(0, 'rgba(76,201,240,0.25)');
+    gradient.addColorStop(1, 'rgba(76,201,240,0)');
+
+    const bgColors = totals.map((d, i, arr) => {
+        if (i === 0) return hexToRgba('#06d6a0', 0.7);
+        return d.cost > arr[i-1].cost ? hexToRgba('#ef476f', 0.7) : hexToRgba('#06d6a0', 0.7);
+    });
+    const borderColors = totals.map((d, i, arr) => {
+        if (i === 0) return '#06d6a0';
+        return d.cost > arr[i-1].cost ? '#ef476f' : '#06d6a0';
+    });
+
+    chartInstances['monthlyCostChart'] = new Chart(el, {
+        type: chartType,
+        data: {
+            labels,
+            datasets: [{
+                label: 'Monthly Cost ($)',
+                data: values,
+                backgroundColor: type === 'bar' ? bgColors : (type === 'area' ? gradient : hexToRgba('#4cc9f0', 0.5)),
+                borderColor: type === 'bar' ? borderColors : '#4cc9f0',
+                borderWidth: type === 'bar' ? 1.5 : 2.5,
+                borderRadius: type === 'bar' ? 8 : 0,
+                barThickness: type === 'bar' ? 36 : undefined,
+                fill: type === 'area',
+                tension: 0.4,
+                pointRadius: chartType === 'line' ? 4 : (chartType === 'radar' ? 3 : 0),
+                pointBackgroundColor: '#4cc9f0',
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            animation: { duration: 800, easing: 'easeOutQuart' },
+            plugins: {
+                legend: { display: false },
+                tooltip: { ...TOOLTIP_STYLE, callbacks: { label: c => '$ ' + c.parsed.y.toFixed(2) } }
+            },
+            scales: chartType !== 'radar' ? {
+                x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$'+v, font: { size: 10 } } }
+            } : {}
+        }
+    });
+}
+
+fetch('/api/monthly-costs').then(r => r.json()).then(data => {
+    chartDataStore.monthlyCost = data;
+    renderMonthlyCost('bar');
+});
+
+// ==========================
+// CHART TYPE SWITCHER ENGINE
+// ==========================
+const renderMap = {
+    'dailyCostChart': renderDailyCost,
+    'serviceCostChart': renderServiceCost,
+    'regionCostChart': renderRegionCost,
+    'dailyServiceChart': renderDailyService,
+    'monthlyCostChart': renderMonthlyCost,
+};
+
+document.querySelectorAll('.chart-type-switcher').forEach(switcher => {
+    const chartId = switcher.dataset.chartId;
+    switcher.querySelectorAll('.chart-switch-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            switcher.querySelectorAll('.chart-switch-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            const type = this.dataset.type;
+            if (renderMap[chartId]) renderMap[chartId](type);
+        });
+    });
+});
+
+// ==========================
+// 3D TILT EFFECT ON KPI CARDS
+// ==========================
+document.querySelectorAll('[data-tilt]').forEach(card => {
+    card.addEventListener('mousemove', e => {
+        const rect = card.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const cx = rect.width / 2;
+        const cy = rect.height / 2;
+        const rotateX = ((y - cy) / cy) * -8;
+        const rotateY = ((x - cx) / cx) * 8;
+        card.style.transform = `perspective(800px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateZ(10px)`;
+        // Move glow
+        const glow = card.querySelector('.kpi-glow');
+        if (glow) {
+            glow.style.left = x + 'px';
+            glow.style.top = y + 'px';
+            glow.style.opacity = '1';
+        }
+    });
+    card.addEventListener('mouseleave', () => {
+        card.style.transform = 'perspective(800px) rotateX(0) rotateY(0) translateZ(0)';
+        const glow = card.querySelector('.kpi-glow');
+        if (glow) glow.style.opacity = '0';
+    });
+});
+
+// ==========================
+// ANIMATED NUMBER COUNTERS
+// ==========================
+function animateCounters() {
+    document.querySelectorAll('.kpi-counter').forEach(el => {
+        const target = parseFloat(el.dataset.target);
+        if (!target || isNaN(target)) return;
+        const duration = 1500;
+        const start = performance.now();
+        const prefix = el.textContent.trim().startsWith('$') ? '$' : '';
+
+        function step(now) {
+            const elapsed = now - start;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 4); // easeOutQuart
+            const current = target * eased;
+            el.textContent = prefix + current.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            if (progress < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    });
+}
+
+// ---- Intersection Observer for scroll-triggered counters ----
+const counterObserver = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { animateCounters(); counterObserver.disconnect(); } });
+}, { threshold: 0.3 });
+document.querySelectorAll('.kpi-counter').forEach(el => counterObserver.observe(el));
+
+// ==========================
+// FLOATING PARTICLES BACKGROUND
+// ==========================
+(function initParticles() {
+    const canvas = document.createElement('canvas');
+    canvas.id = 'particleBg';
+    canvas.style.cssText = 'position:fixed;inset:0;z-index:-2;pointer-events:none;';
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+    let w, h, particles = [];
+
+    function resize() { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; }
+    resize();
+    window.addEventListener('resize', resize);
+
+    for (let i = 0; i < 60; i++) {
+        particles.push({
+            x: Math.random() * w, y: Math.random() * h,
+            vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3,
+            r: Math.random() * 2 + 0.5,
+            color: PALETTE[Math.floor(Math.random() * 5)],
+            alpha: Math.random() * 0.15 + 0.05,
+        });
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, w, h);
+        particles.forEach(p => {
+            p.x += p.vx; p.y += p.vy;
+            if (p.x < 0) p.x = w; if (p.x > w) p.x = 0;
+            if (p.y < 0) p.y = h; if (p.y > h) p.y = 0;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.alpha;
+            ctx.fill();
+        });
+        // Draw connections
+        ctx.globalAlpha = 0.03;
+        ctx.strokeStyle = '#06d6a0';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i < particles.length; i++) {
+            for (let j = i + 1; j < particles.length; j++) {
+                const dx = particles[i].x - particles[j].x;
+                const dy = particles[i].y - particles[j].y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < 150) {
+                    ctx.beginPath();
+                    ctx.moveTo(particles[i].x, particles[i].y);
+                    ctx.lineTo(particles[j].x, particles[j].y);
+                    ctx.stroke();
+                }
+            }
+        }
+        ctx.globalAlpha = 1;
+        requestAnimationFrame(draw);
+    }
+    draw();
+})();
 </script>
 {% endblock %}

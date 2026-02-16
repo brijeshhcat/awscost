@@ -80,55 +80,17 @@ class InventoryService:
     def _get_s3_buckets(self):
         try:
             s3 = self.session.client("s3")
-            cw = self.session.client("cloudwatch")
             resp = s3.list_buckets()
             buckets = []
-            for b in resp["Buckets"]:
+            for b in resp.get("Buckets", []):
                 name = b["Name"]
                 created = b.get("CreationDate", "")
+
                 # Try to get region
+                region = "unknown"
                 try:
                     loc = s3.get_bucket_location(Bucket=name)
                     region = loc.get("LocationConstraint") or "us-east-1"
-                except Exception:
-                    region = "unknown"
-
-                # Try to get bucket size & object count from CloudWatch
-                size_bytes = 0
-                object_count = 0
-                try:
-                    from datetime import datetime, timedelta
-                    end_time = datetime.utcnow()
-                    start_time = end_time - timedelta(days=2)
-                    size_resp = cw.get_metric_statistics(
-                        Namespace="AWS/S3",
-                        MetricName="BucketSizeBytes",
-                        Dimensions=[
-                            {"Name": "BucketName", "Value": name},
-                            {"Name": "StorageType", "Value": "StandardStorage"},
-                        ],
-                        StartTime=start_time,
-                        EndTime=end_time,
-                        Period=86400,
-                        Statistics=["Average"],
-                    )
-                    if size_resp["Datapoints"]:
-                        size_bytes = size_resp["Datapoints"][-1].get("Average", 0)
-
-                    count_resp = cw.get_metric_statistics(
-                        Namespace="AWS/S3",
-                        MetricName="NumberOfObjects",
-                        Dimensions=[
-                            {"Name": "BucketName", "Value": name},
-                            {"Name": "StorageType", "Value": "AllStorageTypes"},
-                        ],
-                        StartTime=start_time,
-                        EndTime=end_time,
-                        Period=86400,
-                        Statistics=["Average"],
-                    )
-                    if count_resp["Datapoints"]:
-                        object_count = int(count_resp["Datapoints"][-1].get("Average", 0))
                 except Exception:
                     pass
 
@@ -150,6 +112,49 @@ class InventoryService:
                 except Exception:
                     pass
 
+                # Try to get bucket size & object count from CloudWatch
+                size_bytes = 0
+                object_count = 0
+                try:
+                    from datetime import datetime, timedelta
+                    cw = self.session.client("cloudwatch", region_name=region if region != "unknown" else "us-east-1")
+                    end_time = datetime.utcnow()
+                    start_time = end_time - timedelta(days=3)
+                    size_resp = cw.get_metric_statistics(
+                        Namespace="AWS/S3",
+                        MetricName="BucketSizeBytes",
+                        Dimensions=[
+                            {"Name": "BucketName", "Value": name},
+                            {"Name": "StorageType", "Value": "StandardStorage"},
+                        ],
+                        StartTime=start_time,
+                        EndTime=end_time,
+                        Period=86400,
+                        Statistics=["Average"],
+                    )
+                    if size_resp.get("Datapoints"):
+                        # Sort by Timestamp and take the latest
+                        dp = sorted(size_resp["Datapoints"], key=lambda x: x["Timestamp"])
+                        size_bytes = dp[-1].get("Average", 0)
+
+                    count_resp = cw.get_metric_statistics(
+                        Namespace="AWS/S3",
+                        MetricName="NumberOfObjects",
+                        Dimensions=[
+                            {"Name": "BucketName", "Value": name},
+                            {"Name": "StorageType", "Value": "AllStorageTypes"},
+                        ],
+                        StartTime=start_time,
+                        EndTime=end_time,
+                        Period=86400,
+                        Statistics=["Average"],
+                    )
+                    if count_resp.get("Datapoints"):
+                        dp = sorted(count_resp["Datapoints"], key=lambda x: x["Timestamp"])
+                        object_count = int(dp[-1].get("Average", 0))
+                except Exception:
+                    pass
+
                 buckets.append({
                     "name": name,
                     "region": region,
@@ -167,29 +172,35 @@ class InventoryService:
     def _get_lambda_functions(self):
         try:
             lam = self.session.client("lambda")
-            resp = lam.list_functions()
             functions = []
-            for fn in resp["Functions"]:
-                func_name = fn["FunctionName"]
-                description = fn.get("Description", "")
-                handler = fn.get("Handler", "N/A")
-                arch = ", ".join(fn.get("Architectures", ["x86_64"]))
-                layers_count = len(fn.get("Layers", []))
-                env_vars_count = len(fn.get("Environment", {}).get("Variables", {}))
+            params = {"MaxItems": 50}
+            while True:
+                resp = lam.list_functions(**params)
+                for fn in resp.get("Functions", []):
+                    func_name = fn["FunctionName"]
+                    description = fn.get("Description", "")
+                    handler = fn.get("Handler", "N/A")
+                    arch = ", ".join(fn.get("Architectures", ["x86_64"]))
+                    layers_count = len(fn.get("Layers", []))
+                    env_vars_count = len(fn.get("Environment", {}).get("Variables", {}))
 
-                functions.append({
-                    "name": func_name,
-                    "description": description,
-                    "runtime": fn.get("Runtime", "N/A"),
-                    "handler": handler,
-                    "memory_mb": fn.get("MemorySize", 0),
-                    "timeout": fn.get("Timeout", 0),
-                    "last_modified": fn.get("LastModified", ""),
-                    "code_size_bytes": fn.get("CodeSize", 0),
-                    "architecture": arch,
-                    "layers_count": layers_count,
-                    "env_vars_count": env_vars_count,
-                })
+                    functions.append({
+                        "name": func_name,
+                        "description": description,
+                        "runtime": fn.get("Runtime", "N/A"),
+                        "handler": handler,
+                        "memory_mb": fn.get("MemorySize", 0),
+                        "timeout": fn.get("Timeout", 0),
+                        "last_modified": fn.get("LastModified", ""),
+                        "code_size_bytes": fn.get("CodeSize", 0),
+                        "architecture": arch,
+                        "layers_count": layers_count,
+                        "env_vars_count": env_vars_count,
+                    })
+                marker = resp.get("NextMarker")
+                if not marker:
+                    break
+                params["Marker"] = marker
             return functions
         except Exception as e:
             return [{"error": str(e)}]

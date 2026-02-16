@@ -1,5 +1,6 @@
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
+from dateutil.relativedelta import relativedelta
 from config import Config
 from aws_services.cost_explorer import CostExplorerService
 from aws_services.recommendations import RecommendationService
@@ -8,6 +9,7 @@ from aws_services.savings_plans import SavingsPlansService
 from aws_services.news import AWSNewsService
 from aws_services.compute_optimizer import ComputeOptimizerService
 from aws_services.cost_agent import CostOptimizationAgent
+from aws_services.cost_savings_ai import CostSavingsAI
 from aws_services import account_manager
 
 app = Flask(__name__)
@@ -21,6 +23,7 @@ savings_service = SavingsPlansService()
 news_service = AWSNewsService()
 compute_optimizer_service = ComputeOptimizerService()
 cost_agent = CostOptimizationAgent()
+cost_savings_ai = CostSavingsAI()
 
 
 @app.context_processor
@@ -183,14 +186,52 @@ def api_cf_template():
 @app.route('/')
 def dashboard():
     try:
-        summary = cost_service.get_cost_summary()
-        daily_costs = cost_service.get_daily_costs(days=30)
-        service_costs = cost_service.get_cost_by_service()
+        # Parse period from query string
+        period = request.args.get('period', '30d')
+        start_date = request.args.get('start')
+        end_date = request.args.get('end')
+        today = date.today()
+
+        if start_date and end_date:
+            period = 'custom'
+        elif period == '7d':
+            start_date = (today - timedelta(days=7)).isoformat()
+            end_date = today.isoformat()
+        elif period == '14d':
+            start_date = (today - timedelta(days=14)).isoformat()
+            end_date = today.isoformat()
+        elif period == '30d':
+            start_date = (today - timedelta(days=30)).isoformat()
+            end_date = today.isoformat()
+        elif period == 'last_month':
+            first_of_this = today.replace(day=1)
+            last_month_end = first_of_this - timedelta(days=1)
+            start_date = last_month_end.replace(day=1).isoformat()
+            end_date = first_of_this.isoformat()
+        elif period == '3m':
+            start_date = (today - relativedelta(months=3)).isoformat()
+            end_date = today.isoformat()
+        elif period == '6m':
+            start_date = (today - relativedelta(months=6)).isoformat()
+            end_date = today.isoformat()
+        elif period == 'ytd':
+            start_date = today.replace(month=1, day=1).isoformat()
+            end_date = today.isoformat()
+        elif period == '12m':
+            start_date = (today - relativedelta(months=12)).isoformat()
+            end_date = today.isoformat()
+        else:
+            start_date = (today - timedelta(days=30)).isoformat()
+            end_date = today.isoformat()
+
+        summary = cost_service.get_cost_summary(start=start_date, end=end_date)
+        daily_costs = cost_service.get_daily_costs(start=start_date, end=end_date)
+        service_costs = cost_service.get_cost_by_service(start=start_date, end=end_date)
         anomalies = cost_service.get_cost_anomalies()
         monthly_costs = cost_service.get_monthly_cost_breakdown(months=6)
-        region_costs = cost_service.get_cost_by_region()
-        account_costs = cost_service.get_cost_by_account()
-        usage_type_costs = cost_service.get_cost_by_usage_type(top_n=15)
+        region_costs = cost_service.get_cost_by_region(start=start_date, end=end_date)
+        account_costs = cost_service.get_cost_by_account(start=start_date, end=end_date)
+        usage_type_costs = cost_service.get_cost_by_usage_type(start=start_date, end=end_date)
         co_summary = compute_optimizer_service.get_optimization_summary()
         return render_template('dashboard.html',
                                summary=summary,
@@ -201,7 +242,10 @@ def dashboard():
                                region_costs=region_costs,
                                account_costs=account_costs,
                                usage_type_costs=usage_type_costs,
-                               co_summary=co_summary)
+                               co_summary=co_summary,
+                               current_period=period,
+                               period_start=start_date,
+                               period_end=end_date)
     except Exception as e:
         return render_template('dashboard.html',
                                error=str(e),
@@ -213,7 +257,10 @@ def dashboard():
                                region_costs=[],
                                account_costs=[],
                                usage_type_costs=[],
-                               co_summary={})
+                               co_summary={},
+                               current_period=request.args.get('period', '30d'),
+                               period_start='',
+                               period_end='')
 
 
 # ================================================================== #
@@ -310,6 +357,16 @@ def forecast():
 
 
 # ================================================================== #
+#  COST SAVINGS OPPORTUNITIES (AI/ML)
+# ================================================================== #
+
+@app.route('/savings-opportunities')
+def savings_opportunities():
+    """AI/ML-powered cost savings analysis — dedicated page."""
+    return render_template('savings_opportunities.html')
+
+
+# ================================================================== #
 #  AWS NEWS
 # ================================================================== #
 
@@ -330,22 +387,31 @@ def news():
 
 @app.route('/api/daily-costs')
 def api_daily_costs():
-    data = cost_service.get_daily_costs(days=30)
+    start = request.args.get('start')
+    end = request.args.get('end')
+    days = int(request.args.get('days', 30))
+    data = cost_service.get_daily_costs(days=days, start=start, end=end)
     return jsonify(data)
 
 @app.route('/api/service-costs')
 def api_service_costs():
-    data = cost_service.get_cost_by_service()
+    start = request.args.get('start')
+    end = request.args.get('end')
+    data = cost_service.get_cost_by_service(start=start, end=end)
     return jsonify(data)
 
 @app.route('/api/monthly-costs')
 def api_monthly_costs():
-    data = cost_service.get_monthly_cost_breakdown(months=6)
+    months = int(request.args.get('months', 6))
+    data = cost_service.get_monthly_cost_breakdown(months=months)
     return jsonify(data)
 
 @app.route('/api/daily-service-costs')
 def api_daily_service_costs():
-    data = cost_service.get_daily_costs_by_service(days=30, top_n=8)
+    start = request.args.get('start')
+    end = request.args.get('end')
+    days = int(request.args.get('days', 30))
+    data = cost_service.get_daily_costs_by_service(days=days, top_n=8, start=start, end=end)
     return jsonify(data)
 
 @app.route('/api/forecast-data')
@@ -356,19 +422,25 @@ def api_forecast_data():
 
 @app.route('/api/region-costs')
 def api_region_costs():
-    data = cost_service.get_cost_by_region()
+    start = request.args.get('start')
+    end = request.args.get('end')
+    data = cost_service.get_cost_by_region(start=start, end=end)
     return jsonify(data)
 
 
 @app.route('/api/account-costs')
 def api_account_costs():
-    data = cost_service.get_cost_by_account()
+    start = request.args.get('start')
+    end = request.args.get('end')
+    data = cost_service.get_cost_by_account(start=start, end=end)
     return jsonify(data)
 
 
 @app.route('/api/usage-type-costs')
 def api_usage_type_costs():
-    data = cost_service.get_cost_by_usage_type(top_n=15)
+    start = request.args.get('start')
+    end = request.args.get('end')
+    data = cost_service.get_cost_by_usage_type(top_n=15, start=start, end=end)
     return jsonify(data)
 
 
@@ -376,6 +448,17 @@ def api_usage_type_costs():
 def api_compute_optimizer():
     data = compute_optimizer_service.get_optimization_summary()
     return jsonify(data)
+
+
+@app.route('/api/cost-savings-ai')
+def api_cost_savings_ai():
+    """API: AI/ML-powered cost savings opportunities."""
+    try:
+        data = cost_savings_ai.generate_opportunities()
+        return jsonify({"opportunities": data, "count": len(data),
+                        "total_savings": round(sum(o["estimated_savings"] for o in data), 2)})
+    except Exception as e:
+        return jsonify({"error": str(e), "opportunities": [], "count": 0, "total_savings": 0}), 500
 
 
 # ================================================================== #

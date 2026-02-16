@@ -98,6 +98,12 @@
                         <i class="bi bi-robot"></i> Cost Agent
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'savings_opportunities' %}active{% endif %}" href="/savings-opportunities">
+                        <i class="bi bi-stars"></i> Savings AI
+                        <span class="badge bg-info float-end" style="font-size:0.55rem;">AI</span>
+                    </a>
+                </li>
 
                 <li class="nav-item mt-2 pt-2 border-top border-secondary">
                     <a class="nav-link {% if request.endpoint and 'accounts' in request.endpoint %}active{% endif %}" href="/accounts">

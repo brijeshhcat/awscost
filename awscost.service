@@ -1,0 +1,15 @@
+[Unit]
+Description=AWS Cost Optimizer Flask App
+After=network.target
+
+[Service]
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/home/ec2-user/awscost
+ExecStart=/home/ec2-user/awscost/venv/bin/gunicorn -c gunicorn_config.py app:app
+Restart=always
+RestartSec=5
+Environment="AWS_REGION=us-east-1"
+
+[Install]
+WantedBy=multi-user.target
