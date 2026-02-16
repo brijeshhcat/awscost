@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Organization Accounts - AWS Cost Optimizer{% endblock %}
+{% block page_title %}<i class="bi bi-diagram-3"></i> AWS Organizations – Discovered Accounts{% endblock %}
+
+{% block content %}
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+{% for category, message in messages %}
+<div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+    {{ message }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endfor %}
+{% endif %}
+{% endwith %}
+
+{% if error %}
+<div class="alert alert-danger">
+    <h6><i class="bi bi-exclamation-triangle"></i> Organization Discovery Failed</h6>
+    <p class="mb-0">{{ error }}</p>
+    <small class="text-muted">The active account needs <code>organizations:ListAccounts</code> permission and must be the management account or a delegated administrator.</small>
+</div>
+<a href="{{ url_for('accounts') }}" class="btn btn-outline-secondary mt-2">
+    <i class="bi bi-arrow-left"></i> Back to Accounts
+</a>
+{% else %}
+
+<div class="card bg-dark border-secondary mb-4">
+    <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-building"></i> Member Accounts ({{ org_accounts|length }})</span>
+        <a href="{{ url_for('accounts') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> Back
+        </a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-dark table-striped table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Account ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Integrated</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for acct in org_accounts %}
+                <tr>
+                    <td><code>{{ acct.aws_account_id }}</code></td>
+                    <td>{{ acct.name }}</td>
+                    <td>{{ acct.email }}</td>
+                    <td>
+                        <span class="badge {{ 'bg-success' if acct.status == 'ACTIVE' else 'bg-secondary' }}">
+                            {{ acct.status }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if acct.already_added %}
+                        <span class="badge bg-info"><i class="bi bi-check-circle"></i> Connected</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Not connected</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not acct.already_added %}
+                        <a href="{{ url_for('accounts_add') }}?aws_account_id={{ acct.aws_account_id }}&name={{ acct.name }}"
+                           class="btn btn-outline-success btn-sm">
+                            <i class="bi bi-plus-lg"></i> Add
+                        </a>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center text-muted py-3">No member accounts found</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="alert alert-info small">
+    <i class="bi bi-lightbulb"></i> <strong>Tip:</strong> To connect an organizational member account, click "Add" and then deploy the CloudFormation template in that account to create the cross-account IAM role.
+</div>
+{% endif %}
+{% endblock %}

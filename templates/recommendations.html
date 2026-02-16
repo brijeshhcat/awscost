@@ -1,0 +1,402 @@
+﻿{% extends "base.html" %}
+{% block title %}Recommendations - AWS Cost Optimizer{% endblock %}
+{% block page_title %}<i class="bi bi-lightbulb"></i> Cost Optimization Recommendations{% endblock %}
+
+{% block content %}
+<!-- Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card kpi-card kpi-cyan h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-arrows-collapse" style="font-size:2rem; color:var(--accent-cyan); opacity:0.6;"></i>
+                <div class="kpi-label mt-2">EC2 Rightsizing</div>
+                <div class="kpi-value text-cyan">${{ rightsizing.total_savings|default('0.00') }}/mo</div>
+                <small style="color:var(--text-muted);">{{ rightsizing.count|default(0) }} recommendations</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card kpi-card kpi-orange h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-shield-check" style="font-size:2rem; color:var(--accent-orange); opacity:0.6;"></i>
+                <div class="kpi-label mt-2">Trusted Advisor</div>
+                {% set ta_savings = trusted_advisor|selectattr('estimated_savings', 'gt', 0)|list|length if trusted_advisor and trusted_advisor[0] is mapping and 'error' not in trusted_advisor[0] else 0 %}
+                <div class="kpi-value text-orange">{{ ta_savings }} Checks</div>
+                <small style="color:var(--text-muted);">with potential savings</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card kpi-card kpi-purple h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-moon-stars" style="font-size:2rem; color:var(--accent-purple); opacity:0.6;"></i>
+                <div class="kpi-label mt-2">Idle Resources</div>
+                {% set idle_count = (idle_resources.ec2|length + idle_resources.ebs|length + idle_resources.eip|length + idle_resources.rds|length + idle_resources.elb|length) if idle_resources and idle_resources is mapping else 0 %}
+                <div class="kpi-value text-purple">{{ idle_count }}</div>
+                <small style="color:var(--text-muted);">idle / unused resources</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card kpi-card kpi-blue h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-cpu" style="font-size:2rem; color:var(--accent-blue); opacity:0.6;"></i>
+                <div class="kpi-label mt-2">Compute Optimizer</div>
+                {% set co_total = (co_ec2.total_monthly_savings|default(0)) + (co_ebs.total_monthly_savings|default(0)) + (co_lambda.total_monthly_savings|default(0)) %}
+                <div class="kpi-value text-blue">${{ "%.2f"|format(co_total) }}/mo</div>
+                <small style="color:var(--text-muted);">{{ (co_ec2.count|default(0)) + (co_ebs.count|default(0)) + (co_lambda.count|default(0)) }} findings</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== COMPUTE OPTIMIZER: EC2 ========== -->
+<div class="section-title"><i class="bi bi-cpu"></i> AWS Compute Optimizer - EC2 Recommendations</div>
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-pc-display"></i> EC2 Instance Recommendations</span>
+        {% if co_ec2 and co_ec2.total_monthly_savings %}
+        <span class="badge bg-success">Potential: ${{ co_ec2.total_monthly_savings }}/mo</span>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-dark table-striped table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Instance ID</th>
+                        <th>Name</th>
+                        <th>Finding</th>
+                        <th>Current</th>
+                        <th>Recommended</th>
+                        <th>CPU</th>
+                        <th>Memory</th>
+                        <th>Risk</th>
+                        <th class="text-end">Savings/mo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rec in (co_ec2.recommendations if co_ec2 and co_ec2.recommendations else []) %}
+                    <tr>
+                        <td><code>{{ rec.instance_id }}</code></td>
+                        <td>{{ rec.instance_name or '---' }}</td>
+                        <td>
+                            {% if rec.finding == 'OVER_PROVISIONED' %}
+                            <span class="badge bg-warning">Over-Provisioned</span>
+                            {% elif rec.finding == 'UNDER_PROVISIONED' %}
+                            <span class="badge bg-danger">Under-Provisioned</span>
+                            {% elif rec.finding == 'OPTIMIZED' %}
+                            <span class="badge bg-success">Optimized</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ rec.finding }}</span>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge bg-secondary">{{ rec.current_type }}</span></td>
+                        <td><span class="badge bg-info">{{ rec.recommended_type }}</span></td>
+                        <td>{{ rec.cpu_utilization }}</td>
+                        <td>{{ rec.memory_utilization }}</td>
+                        <td>
+                            {% if rec.performance_risk <= 1 %}
+                            <span class="badge bg-success">Very Low</span>
+                            {% elif rec.performance_risk <= 2 %}
+                            <span class="badge bg-info">Low</span>
+                            {% elif rec.performance_risk <= 3 %}
+                            <span class="badge bg-warning">Medium</span>
+                            {% else %}
+                            <span class="badge bg-danger">High</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end" style="color:var(--accent-cyan); font-weight:600;">${{ "%.2f"|format(rec.est_monthly_savings) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="9" class="text-center py-3" style="color:var(--text-muted);">No Compute Optimizer EC2 recommendations (ensure Compute Optimizer is enabled)</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========== COMPUTE OPTIMIZER: EBS ========== -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-device-hdd"></i> EBS Volume Recommendations</span>
+        {% if co_ebs and co_ebs.total_monthly_savings %}
+        <span class="badge bg-success">Potential: ${{ co_ebs.total_monthly_savings }}/mo</span>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-dark table-striped table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Volume ID</th>
+                        <th>Finding</th>
+                        <th>Current Type</th>
+                        <th>Current Size</th>
+                        <th>Recommended</th>
+                        <th>Rec. Size</th>
+                        <th class="text-end">Savings/mo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rec in (co_ebs.recommendations if co_ebs and co_ebs.recommendations else []) %}
+                    <tr>
+                        <td><code>{{ rec.volume_id }}</code></td>
+                        <td>
+                            {% if rec.finding == 'NotOptimized' %}
+                            <span class="badge bg-warning">Not Optimized</span>
+                            {% elif rec.finding == 'Optimized' %}
+                            <span class="badge bg-success">Optimized</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ rec.finding }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ rec.current_type }}</td>
+                        <td>{{ rec.current_size }} GB</td>
+                        <td><span class="badge bg-info">{{ rec.recommended_type }}</span></td>
+                        <td>{{ rec.recommended_size }} GB</td>
+                        <td class="text-end" style="color:var(--accent-cyan); font-weight:600;">${{ "%.2f"|format(rec.est_monthly_savings) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center py-3" style="color:var(--text-muted);">No EBS volume recommendations</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========== COMPUTE OPTIMIZER: LAMBDA ========== -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-lightning"></i> Lambda Function Recommendations</span>
+        {% if co_lambda and co_lambda.total_monthly_savings %}
+        <span class="badge bg-success">Potential: ${{ co_lambda.total_monthly_savings }}/mo</span>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-dark table-striped table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Function</th>
+                        <th>Finding</th>
+                        <th>Current Memory</th>
+                        <th>Recommended</th>
+                        <th>Invocations</th>
+                        <th class="text-end">Savings/mo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rec in (co_lambda.recommendations if co_lambda and co_lambda.recommendations else []) %}
+                    <tr>
+                        <td><code>{{ rec.function_name }}</code></td>
+                        <td>
+                            {% if rec.finding == 'NotOptimized' %}
+                            <span class="badge bg-warning">Not Optimized</span>
+                            {% elif rec.finding == 'Optimized' %}
+                            <span class="badge bg-success">Optimized</span>
+                            {% elif rec.finding == 'Unavailable' %}
+                            <span class="badge bg-secondary">Unavailable</span>
+                            {% else %}
+                            <span class="badge bg-info">{{ rec.finding }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ rec.current_memory_mb }} MB</td>
+                        <td><span class="badge bg-info">{{ rec.recommended_memory_mb }} MB</span></td>
+                        <td>{{ rec.num_invocations }}</td>
+                        <td class="text-end" style="color:var(--accent-cyan); font-weight:600;">${{ "%.2f"|format(rec.est_monthly_savings) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center py-3" style="color:var(--text-muted);">No Lambda recommendations</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========== EC2 RIGHTSIZING (Cost Explorer) ========== -->
+<div class="section-title"><i class="bi bi-arrows-collapse"></i> Cost Explorer Rightsizing</div>
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-arrows-collapse"></i> EC2 Rightsizing Recommendations</span>
+        {% if rightsizing and rightsizing.recommendations %}
+        <span class="badge bg-success">Potential savings: ${{ rightsizing.total_savings }}/mo</span>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-dark table-striped table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Instance ID</th>
+                        <th>Name</th>
+                        <th>Current Type</th>
+                        <th>Recommended</th>
+                        <th>Action</th>
+                        <th>CPU Max %</th>
+                        <th class="text-end">Current Cost</th>
+                        <th class="text-end">Monthly Savings</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rec in rightsizing.recommendations or [] %}
+                    <tr>
+                        <td><code>{{ rec.instance_id }}</code></td>
+                        <td>{{ rec.instance_name or '---' }}</td>
+                        <td><span class="badge bg-secondary">{{ rec.current_type }}</span></td>
+                        <td><span class="badge bg-info">{{ rec.recommended_type }}</span></td>
+                        <td>
+                            <span class="badge {{ 'bg-warning' if rec.recommendation_type == 'Modify' else 'bg-danger' }}">
+                                {{ rec.recommendation_type }}
+                            </span>
+                        </td>
+                        <td>{{ rec.cpu_max }}%</td>
+                        <td class="text-end">${{ rec.current_monthly_cost }}</td>
+                        <td class="text-end" style="color:var(--accent-cyan);">${{ rec.monthly_savings }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center py-3" style="color:var(--text-muted);">No rightsizing recommendations available</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========== TRUSTED ADVISOR ========== -->
+<div class="section-title"><i class="bi bi-shield-check"></i> Trusted Advisor</div>
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="bi bi-shield-check"></i> Trusted Advisor - Cost Optimization Checks
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-dark table-striped table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Check Name</th>
+                        <th>Status</th>
+                        <th>Flagged Resources</th>
+                        <th class="text-end">Est. Savings</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for check in trusted_advisor or [] %}
+                    {% if check is mapping and 'error' not in check %}
+                    <tr>
+                        <td>{{ check.name }}</td>
+                        <td>
+                            {% if check.status == 'ok' %}
+                            <span class="badge bg-success">OK</span>
+                            {% elif check.status == 'warning' %}
+                            <span class="badge bg-warning">Warning</span>
+                            {% elif check.status == 'error' %}
+                            <span class="badge bg-danger">Action Needed</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ check.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ check.flagged_resources }}</td>
+                        <td class="text-end">${{ "%.2f"|format(check.estimated_savings) }}</td>
+                    </tr>
+                    {% endif %}
+                    {% else %}
+                    <tr><td colspan="4" class="text-center py-3" style="color:var(--text-muted);">Trusted Advisor data unavailable (requires Business/Enterprise Support)</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========== IDLE RESOURCES ========== -->
+<div class="section-title"><i class="bi bi-moon-stars"></i> Idle & Unused Resources</div>
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="bi bi-moon-stars"></i> Idle & Unused Resources
+    </div>
+    <div class="card-body">
+        {% if idle_resources and idle_resources is mapping %}
+
+        {% if idle_resources.ec2 %}
+        <h6 style="color:var(--accent-cyan);"><i class="bi bi-pc-display"></i> Idle EC2 Instances (Avg CPU &lt; 5%)</h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-dark table-sm table-hover mb-0">
+                <thead><tr><th>Instance ID</th><th>Name</th><th>Type</th><th>Avg CPU</th></tr></thead>
+                <tbody>
+                {% for i in idle_resources.ec2 %}
+                <tr><td><code>{{ i.id }}</code></td><td>{{ i.name or '---' }}</td><td>{{ i.type }}</td><td>{{ i.avg_cpu }}%</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if idle_resources.ebs %}
+        <h6 style="color:var(--accent-orange);"><i class="bi bi-device-hdd"></i> Unattached EBS Volumes</h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-dark table-sm table-hover mb-0">
+                <thead><tr><th>Volume ID</th><th>Size (GB)</th><th>Type</th><th>Created</th></tr></thead>
+                <tbody>
+                {% for v in idle_resources.ebs %}
+                <tr><td><code>{{ v.id }}</code></td><td>{{ v.size_gb }}</td><td>{{ v.type }}</td><td>{{ v.created }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if idle_resources.eip %}
+        <h6 style="color:var(--accent-red);"><i class="bi bi-globe"></i> Unused Elastic IPs</h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-dark table-sm table-hover mb-0">
+                <thead><tr><th>Public IP</th><th>Allocation ID</th></tr></thead>
+                <tbody>
+                {% for e in idle_resources.eip %}
+                <tr><td>{{ e.public_ip }}</td><td>{{ e.allocation_id }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if idle_resources.rds %}
+        <h6 style="color:var(--accent-blue);"><i class="bi bi-database"></i> Idle RDS Instances (Avg CPU &lt; 5%)</h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-dark table-sm table-hover mb-0">
+                <thead><tr><th>DB ID</th><th>Class</th><th>Engine</th><th>Avg CPU</th></tr></thead>
+                <tbody>
+                {% for db in idle_resources.rds %}
+                <tr><td>{{ db.id }}</td><td>{{ db.class }}</td><td>{{ db.engine }}</td><td>{{ db.avg_cpu }}%</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if idle_resources.elb %}
+        <h6 style="color:var(--accent-orange);"><i class="bi bi-diagram-3"></i> Idle Load Balancers (0 requests in 7d)</h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-dark table-sm table-hover mb-0">
+                <thead><tr><th>Name</th><th>Type</th></tr></thead>
+                <tbody>
+                {% for lb in idle_resources.elb %}
+                <tr><td>{{ lb.name }}</td><td>{{ lb.type }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if not idle_resources.ec2 and not idle_resources.ebs and not idle_resources.eip and not idle_resources.rds and not idle_resources.elb %}
+        <p class="mb-0" style="color:var(--text-muted);"><i class="bi bi-check-circle" style="color:var(--accent-cyan);"></i> No idle resources detected.</p>
+        {% endif %}
+        {% else %}
+        <p class="mb-0" style="color:var(--text-muted);">Unable to fetch idle resource data.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

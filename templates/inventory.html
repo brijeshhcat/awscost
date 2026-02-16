@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+{% block title %}Resource Inventory - AWS Cost Optimizer{% endblock %}
+{% block page_title %}<i class="bi bi-server"></i> AWS Resource Inventory{% endblock %}
+
+{% block content %}
+{% if resources and resources is mapping %}
+
+<!-- Resource Count Summary -->
+<div class="row g-3 mb-4">
+    {% set resource_types = [
+        ('ec2_instances', 'PC Display', 'EC2 Instances', 'info'),
+        ('rds_instances', 'Database', 'RDS Instances', 'warning'),
+        ('rds_reserved', 'Shield Check', 'RDS Reserved', 'danger'),
+        ('savings_plans', 'Piggy Bank', 'Savings Plans', 'success'),
+        ('s3_buckets', 'Bucket', 'S3 Buckets', 'success'),
+        ('lambda_functions', 'Lightning', 'Lambda Functions', 'primary'),
+        ('ebs_volumes', 'Device HDD', 'EBS Volumes', 'secondary'),
+        ('load_balancers', 'Diagram 3', 'Load Balancers', 'danger'),
+    ] %}
+    {% for key, icon_suffix, label, color in resource_types %}
+    <div class="col-lg-3 col-md-4 col-6">
+        <div class="card bg-dark border-secondary text-center h-100">
+            <div class="card-body py-3">
+                <h2 class="text-{{ color }}">{{ resources[key]|length if resources.get(key) and resources[key][0] is mapping and 'error' not in resources[key][0] else 0 }}</h2>
+                <small class="text-muted">{{ label }}</small>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Tabs for each service -->
+<ul class="nav nav-tabs mb-3" id="inventoryTabs" role="tablist">
+    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-ec2">EC2</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-rds">RDS</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-rds-ri"><i class="bi bi-shield-check"></i> RDS Reserved</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-sp"><i class="bi bi-piggy-bank"></i> Savings Plans</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-s3">S3</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-lambda">Lambda</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-ebs">EBS</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-eip">Elastic IPs</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-elb">Load Balancers</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-vpc">VPCs</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-ddb">DynamoDB</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-ecs">ECS</a></li>
+</ul>
+
+<div class="tab-content">
+    <!-- EC2 -->
+    <div class="tab-pane fade show active" id="tab-ec2">
+        <div class="card bg-dark border-secondary">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead><tr><th>Instance ID</th><th>Name</th><th>Type</th><th>State</th><th>AZ</th><th>Private IP</th><th>Public IP</th><th>Platform</th><th>Launched</th></tr></thead>
+                        <tbody>
+                        {% for i in resources.ec2_instances or [] %}
+                        {% if i is mapping and 'error' not in i %}
+                        <tr>
+                            <td><code>{{ i.id }}</code></td><td>{{ i.name or '—' }}</td>
+                            <td><span class="badge bg-secondary">{{ i.type }}</span></td>
+                            <td><span class="badge {{ 'bg-success' if i.state == 'running' else 'bg-warning' if i.state == 'stopped' else 'bg-secondary' }}">{{ i.state }}</span></td>
+                            <td>{{ i.az }}</td><td>{{ i.private_ip }}</td><td>{{ i.public_ip or '—' }}</td><td>{{ i.platform }}</td><td>{{ i.launch_time }}</td>
+                        </tr>
+                        {% endif %}
+                        {% else %}<tr><td colspan="9" class="text-center text-muted py-3">No EC2 instances found</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RDS -->
+    <div class="tab-pane fade" id="tab-rds">
+        <div class="card bg-dark border-secondary">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead><tr><th>DB ID</th><th>Engine</th><th>Version</th><th>Class</th><th>Status</th><th>Storage (GB)</th><th>Multi-AZ</th><th>Endpoint</th></tr></thead>
+                        <tbody>
+                        {% for db in resources.rds_instances or [] %}
+                        {% if db is mapping and 'error' not in db %}
+                        <tr>
+                            <td>{{ db.id }}</td><td>{{ db.engine }}</td><td>{{ db.version }}</td>
+                            <td><span class="badge bg-secondary">{{ db.class }}</span></td>
+                            <td><span class="badge {{ 'bg-success' if db.status == 'available' else 'bg-warning' }}">{{ db.status }}</span></td>
+                            <td>{{ db.storage_gb }}</td>
+                            <td>{{ '✓' if db.multi_az else '✗' }}</td>
+                            <td class="text-truncate" style="max-width:200px">{{ db.endpoint }}</td>
+                        </tr>
+                        {% endif %}
+                        {% else %}<tr><td colspan="8" class="text-center text-muted py-3">No RDS instances found</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RDS Reserved Instances -->
+    <div class="tab-pane fade" id="tab-rds-ri">
+        <div class="card bg-dark border-secondary">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead><tr><th>Reservation ID</th><th>DB Class</th><th>Engine</th><th>Count</th><th>State</th><th>Offering Type</th><th>Multi-AZ</th><th>Fixed Price ($)</th><th>Recurring ($/hr)</th><th>Start Time</th><th>Duration</th></tr></thead>
+                        <tbody>
+                        {% for ri in resources.rds_reserved or [] %}
+                        {% if ri is mapping and 'error' not in ri %}
+                        <tr>
+                            <td><code>{{ ri.id }}</code></td>
+                            <td><span class="badge bg-secondary">{{ ri.class }}</span></td>
+                            <td>{{ ri.engine }}</td>
+                            <td>{{ ri.count }}</td>
+                            <td><span class="badge {{ 'bg-success' if ri.state == 'active' else 'bg-warning' }}">{{ ri.state }}</span></td>
+                            <td>{{ ri.offering_type }}</td>
+                            <td>{{ '✓' if ri.multi_az else '✗' }}</td>
+                            <td class="text-end">${{ "%.2f"|format(ri.fixed_price) }}</td>
+                            <td class="text-end">${{ "%.4f"|format(ri.recurring_charges) }}</td>
+                            <td>{{ ri.start_time }}</td>
+                            <td>{{ (ri.duration_seconds / 86400)|round(0)|int }} days</td>
+                        </tr>
+                        {% endif %}
+                        {% else %}<tr><td colspan="11" class="text-center text-muted py-3">No RDS Reserved Instances found</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Savings Plans -->
+    <div class="tab-pane fade" id="tab-sp">
+        <div class="card bg-dark border-secondary">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead><tr><th>Plan ID</th><th>Type</th><th>State</th><th>Payment Option</th><th>Commitment/hr ($)</th><th>Upfront ($)</th><th>Recurring ($)</th><th>Region</th><th>Start</th><th>End</th></tr></thead>
+                        <tbody>
+                        {% for sp in resources.savings_plans or [] %}
+                        {% if sp is mapping and 'error' not in sp %}
+                        <tr>
+                            <td><code>{{ sp.id[:12] }}…</code></td>
+                            <td><span class="badge bg-info">{{ sp.type }}</span></td>
+                            <td><span class="badge {{ 'bg-success' if sp.state == 'active' else 'bg-warning' if sp.state == 'queued' else 'bg-secondary' }}">{{ sp.state }}</span></td>
+                            <td>{{ sp.payment_option }}</td>
+                            <td class="text-end">${{ sp.commitment_per_hour }}</td>
+                            <td class="text-end">${{ sp.upfront_payment }}</td>
+                            <td class="text-end">${{ sp.recurring_payment }}</td>
+                            <td>{{ sp.region or '—' }}</td>
+                            <td>{{ sp.start[:10] if sp.start else '—' }}</td>
+                            <td>{{ sp.end[:10] if sp.end else '—' }}</td>
+                        </tr>
+                        {% endif %}
+                        {% else %}<tr><td colspan="10" class="text-center text-muted py-3">No Savings Plans found</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- S3 -->
+    <div class="tab-pane fade" id="tab-s3">
+        <div class="card bg-dark border-secondary">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead><tr><th>Bucket Name</th><th>Region</th><th>Size</th><th>Objects</th><th>Versioning</th><th>Encryption</th><th>Created</th></tr></thead>
+                        <tbody>
+                        {% for b in resources.s3_buckets or [] %}
+                        {% if b is mapping and 'error' not in b %}
+                        <tr>
+                            <td>{{ b.name }}</td>
+                            <td>{{ b.region }}</td>
+                            <td>
+                                {% if b.size_bytes is defined %}
+                                    {% if b.size_bytes > 1073741824 %}
+                                        {{ "%.2f"|format(b.size_bytes / 1073741824) }} GB
+                                    {% elif b.size_bytes > 1048576 %}
+                                        {{ "%.2f"|format(b.size_bytes / 1048576) }} MB
+                                    {% elif b.size_bytes > 1024 %}
+                                        {{ "%.1f"|format(b.size_bytes / 1024) }} KB
+                                    {% else %}
+                                        {{ b.size_bytes|int }} B
+                                    {% endif %}
+                                {% else %}—{% endif %}
+                            </td>
+                            <td>{{ b.object_count|default(0)|int }}</td>
+                            <td><span class="badge {{ 'bg-success' if b.versioning == 'Enabled' else 'bg-secondary' }}">{{ b.versioning|default('Disabled') }}</span></td>
+                            <td><span class="badge {{ 'bg-info' if b.encryption != 'None' else 'bg-warning' }}">{{ b.encryption|default('None') }}</span></td>
+                            <td>{{ b.created }}</td>
+                        </tr>
+                        {% endif %}
+                        {% else %}<tr><td colspan="7" class="text-center text-muted py-3">No S3 buckets found</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lambda -->
+    <div class="tab-pane fade" id="tab-lambda">
+        <div class="card bg-dark border-secondary">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead><tr><th>Function Name</th><th>Description</th><th>Runtime</th><th>Handler</th><th>Memory (MB)</th><th>Timeout (s)</th><th>Architecture</th><th>Layers</th><th>Code Size</th><th>Last Modified</th></tr></thead>
+                        <tbody>
+                        {% for fn in resources.lambda_functions or [] %}
+                        {% if fn is mapping and 'error' not in fn %}
+                        <tr>
+                            <td>{{ fn.name }}</td>
+                            <td class="text-truncate" style="max-width:180px" title="{{ fn.description|default('') }}">{{ fn.description|default('—')|truncate(40) }}</td>
+                            <td><span class="badge bg-info">{{ fn.runtime }}</span></td>
+                            <td><code>{{ fn.handler|default('N/A') }}</code></td>
+                            <td>{{ fn.memory_mb }}</td><td>{{ fn.timeout }}</td>
+                            <td>{{ fn.architecture|default('x86_64') }}</td>
+                            <td>{{ fn.layers_count|default(0) }}</td>
+                            <td>{{ (fn.code_size_bytes / 1024)|round(1) }} KB</td>
+                            <td>{{ fn.last_modified }}</td>
+                        </tr>
+                        {% endif %}
+                        {% else %}<tr><td colspan="10" class="text-center text-muted py-3">No Lambda functions found</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- EBS -->
+    <div class="tab-pane fade" id="tab-ebs">
+        <div class="card bg-dark border-secondary">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead><tr><th>Volume ID</th><th>Name</th><th>Size (GB)</th><th>Type</th><th>State</th><th>AZ</th><th>IOPS</th><th>Encrypted</th><th>Attached To</th></tr></thead>
+                        <tbody>
+                        {% for v in resources.ebs_volumes or [] %}
+                        {% if v is mapping and 'error' not in v %}
+                        <tr>
+                            <td><code>{{ v.id }}</code></td><td>{{ v.name or '—' }}</td>
+                            <td>{{ v.size_gb }}</td><td>{{ v.type }}</td>
+                            <td><span class="badge {{ 'bg-success' if v.state == 'in-use' else 'bg-warning' }}">{{ v.state }}</span></td>
+                            <td>{{ v.az }}</td><td>{{ v.iops }}</td>
+                            <td>{{ '✓' if v.encrypted else '✗' }}</td>
+                            <td>{{ v.attached_to }}</td>
+                        </tr>
+                        {% endif %}
+                        {% else %}<tr><td colspan="9" class="text-center text-muted py-3">No EBS volumes found</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Elastic IPs -->
+    <div class="tab-pane fade" id="tab-eip">
+        <div class="card bg-dark border-secondary">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead><tr><th>Public IP</th><th>Allocation ID</th><th>Associated Instance</th><th>Domain</th></tr></thead>
+                        <tbody>
+                        {% for addr in resources.elastic_ips or [] %}
+                        {% if addr is mapping and 'error' not in addr %}
+                        <tr>
+                            <td>{{ addr.public_ip }}</td><td>{{ addr.allocation_id }}</td>
+                            <td>{{ addr.associated_instance }}</td><td>{{ addr.domain }}</td>
+                        </tr>
+                        {% endif %}
+                        {% else %}<tr><td colspan="4" class="text-center text-muted py-3">No Elastic IPs found</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ALB/NLB -->
+    <div class="tab-pane fade" id="tab-elb">
+        <div class="card bg-dark border-secondary">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead><tr><th>Name</th><th>Type</th><th>Scheme</th><th>State</th><th>DNS</th><th>AZs</th></tr></thead>
+                        <tbody>
+                        {% for lb in resources.load_balancers or [] %}
+                        {% if lb is mapping and 'error' not in lb %}
+                        <tr>
+                            <td>{{ lb.name }}</td><td><span class="badge bg-info">{{ lb.type }}</span></td>
+                            <td>{{ lb.scheme }}</td>
+                            <td><span class="badge {{ 'bg-success' if lb.state == 'active' else 'bg-secondary' }}">{{ lb.state }}</span></td>
+                            <td class="text-truncate" style="max-width:250px">{{ lb.dns }}</td>
+                            <td>{{ lb.az }}</td>
+                        </tr>
+                        {% endif %}
+                        {% else %}<tr><td colspan="6" class="text-center text-muted py-3">No load balancers found</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VPCs -->
+    <div class="tab-pane fade" id="tab-vpc">
+        <div class="card bg-dark border-secondary">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead><tr><th>VPC ID</th><th>Name</th><th>CIDR</th><th>State</th><th>Default</th></tr></thead>
+                        <tbody>
+                        {% for vpc in resources.vpcs or [] %}
+                        {% if vpc is mapping and 'error' not in vpc %}
+                        <tr>
+                            <td><code>{{ vpc.id }}</code></td><td>{{ vpc.name or '—' }}</td>
+                            <td>{{ vpc.cidr }}</td>
+                            <td><span class="badge bg-success">{{ vpc.state }}</span></td>
+                            <td>{{ '✓' if vpc.is_default else '✗' }}</td>
+                        </tr>
+                        {% endif %}
+                        {% else %}<tr><td colspan="5" class="text-center text-muted py-3">No VPCs found</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DynamoDB -->
+    <div class="tab-pane fade" id="tab-ddb">
+        <div class="card bg-dark border-secondary">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead><tr><th>Table Name</th><th>Status</th><th>Items</th><th>Size</th><th>Billing Mode</th></tr></thead>
+                        <tbody>
+                        {% for t in resources.dynamodb_tables or [] %}
+                        {% if t is mapping and 'error' not in t %}
+                        <tr>
+                            <td>{{ t.name }}</td>
+                            <td><span class="badge {{ 'bg-success' if t.status == 'ACTIVE' else 'bg-secondary' }}">{{ t.status }}</span></td>
+                            <td>{{ t.item_count }}</td>
+                            <td>{{ (t.size_bytes / 1024)|round(1) }} KB</td>
+                            <td>{{ t.billing_mode }}</td>
+                        </tr>
+                        {% endif %}
+                        {% else %}<tr><td colspan="5" class="text-center text-muted py-3">No DynamoDB tables found</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ECS -->
+    <div class="tab-pane fade" id="tab-ecs">
+        <div class="card bg-dark border-secondary">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead><tr><th>Cluster</th><th>Status</th><th>Running Tasks</th><th>Active Services</th><th>Instances</th></tr></thead>
+                        <tbody>
+                        {% for c in resources.ecs_clusters or [] %}
+                        {% if c is mapping and 'error' not in c %}
+                        <tr>
+                            <td>{{ c.name }}</td>
+                            <td><span class="badge {{ 'bg-success' if c.status == 'ACTIVE' else 'bg-secondary' }}">{{ c.status }}</span></td>
+                            <td>{{ c.running_tasks }}</td><td>{{ c.active_services }}</td><td>{{ c.registered_instances }}</td>
+                        </tr>
+                        {% endif %}
+                        {% else %}<tr><td colspan="5" class="text-center text-muted py-3">No ECS clusters found</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="alert alert-info">Unable to retrieve resource inventory data.</div>
+{% endif %}
+{% endblock %}

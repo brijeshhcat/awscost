@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Cost Forecast - AWS Cost Optimizer{% endblock %}
+{% block page_title %}<i class="bi bi-graph-up-arrow"></i> Cost Forecast{% endblock %}
+
+{% block content %}
+<!-- Forecast Summary -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card bg-dark border-secondary h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-graph-up-arrow fs-1 text-info"></i>
+                <h6 class="mt-2 text-muted">Total Forecasted Cost</h6>
+                <h2 class="text-info">${{ forecast_data.total_forecast|default('0.00') }}</h2>
+                <small class="text-muted">Next {{ forecast_data.periods|length if forecast_data and forecast_data.periods else 0 }} months</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-dark border-secondary h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-calendar3 fs-1 text-warning"></i>
+                <h6 class="mt-2 text-muted">Monthly Average (Forecast)</h6>
+                {% set avg_forecast = (forecast_data.total_forecast / forecast_data.periods|length) if forecast_data and forecast_data.periods and forecast_data.periods|length > 0 else 0 %}
+                <h2 class="text-warning">${{ "%.2f"|format(avg_forecast) }}</h2>
+                <small class="text-muted">Estimated per month</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-dark border-secondary h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-clock-history fs-1 text-success"></i>
+                <h6 class="mt-2 text-muted">Historical Trend</h6>
+                <h2 class="text-success">{{ monthly_trend|length if monthly_trend else 0 }} months</h2>
+                <small class="text-muted">Of historical data</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="row g-3 mb-4">
+    <div class="col-md-12">
+        <div class="card bg-dark border-secondary">
+            <div class="card-header border-secondary">
+                <i class="bi bi-graph-up"></i> Historical Trend + Forecast
+            </div>
+            <div class="card-body">
+                <canvas id="forecastChart" height="350"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Forecast Details Table -->
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card bg-dark border-secondary">
+            <div class="card-header border-secondary">
+                <i class="bi bi-table"></i> Monthly Forecast Breakdown
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead>
+                            <tr><th>Period</th><th class="text-end">Mean ($)</th><th class="text-end">Lower ($)</th><th class="text-end">Upper ($)</th></tr>
+                        </thead>
+                        <tbody>
+                        {% for p in forecast_data.periods or [] %}
+                        <tr>
+                            <td>{{ p.start }}</td>
+                            <td class="text-end text-info">{{ "%.2f"|format(p.mean) }}</td>
+                            <td class="text-end text-success">{{ "%.2f"|format(p.lower) }}</td>
+                            <td class="text-end text-danger">{{ "%.2f"|format(p.upper) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">No forecast data available</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card bg-dark border-secondary">
+            <div class="card-header border-secondary">
+                <i class="bi bi-clock-history"></i> Historical Monthly Cost
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead>
+                            <tr><th>Month</th><th class="text-end">Cost ($)</th><th style="width:40%">Trend</th></tr>
+                        </thead>
+                        <tbody>
+                        {% set max_trend = monthly_trend|map(attribute='cost')|max if monthly_trend else 1 %}
+                        {% for m in monthly_trend or [] %}
+                        <tr>
+                            <td>{{ m.month }}</td>
+                            <td class="text-end">{{ "%.2f"|format(m.cost) }}</td>
+                            <td>
+                                <div class="progress bg-secondary" style="height:16px;">
+                                    <div class="progress-bar bg-warning" style="width:{{ (m.cost / max_trend * 100)|round(1) if max_trend else 0 }}%"></div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center text-muted py-3">No historical data available</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if forecast_data and forecast_data.error is defined %}
+<div class="alert alert-warning">
+    <i class="bi bi-info-circle"></i> <strong>Note:</strong> {{ forecast_data.error }}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    // Historical data
+    const histLabels = {{ (monthly_trend|map(attribute='month')|list)|tojson }};
+    const histData = {{ (monthly_trend|map(attribute='cost')|list)|tojson }};
+
+    // Forecast data
+    const fcLabels = {{ (forecast_data.periods|map(attribute='start')|list)|tojson if forecast_data and forecast_data.periods else '[]' }};
+    const fcMean = {{ (forecast_data.periods|map(attribute='mean')|list)|tojson if forecast_data and forecast_data.periods else '[]' }};
+    const fcLower = {{ (forecast_data.periods|map(attribute='lower')|list)|tojson if forecast_data and forecast_data.periods else '[]' }};
+    const fcUpper = {{ (forecast_data.periods|map(attribute='upper')|list)|tojson if forecast_data and forecast_data.periods else '[]' }};
+
+    // Merge labels
+    const allLabels = [...histLabels, ...fcLabels.map(l => l.substring(0,7))];
+    const nullPad = new Array(histLabels.length).fill(null);
+
+    new Chart(document.getElementById('forecastChart'), {
+        type: 'line',
+        data: {
+            labels: allLabels,
+            datasets: [
+                {
+                    label: 'Historical Cost',
+                    data: [...histData, ...new Array(fcLabels.length).fill(null)],
+                    borderColor: '#ffc107',
+                    backgroundColor: 'rgba(255,193,7,0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 3,
+                },
+                {
+                    label: 'Forecast (Mean)',
+                    data: [...nullPad, ...fcMean],
+                    borderColor: '#0dcaf0',
+                    borderDash: [6, 3],
+                    backgroundColor: 'rgba(13,202,240,0.1)',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 4,
+                },
+                {
+                    label: 'Forecast Upper',
+                    data: [...nullPad, ...fcUpper],
+                    borderColor: 'rgba(220,53,69,0.4)',
+                    backgroundColor: 'rgba(220,53,69,0.05)',
+                    fill: '+1',
+                    borderDash: [2, 2],
+                    pointRadius: 0,
+                },
+                {
+                    label: 'Forecast Lower',
+                    data: [...nullPad, ...fcLower],
+                    borderColor: 'rgba(25,135,84,0.4)',
+                    backgroundColor: 'rgba(25,135,84,0.05)',
+                    fill: false,
+                    borderDash: [2, 2],
+                    pointRadius: 0,
+                },
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { color: '#ccc' } },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => ctx.dataset.label + ': $' + (ctx.parsed.y || 0).toFixed(2)
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#888' }
+                },
+                y: {
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#888', callback: v => '$' + v }
+                }
+            }
+        }
+    });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,641 @@
+﻿{% extends "base.html" %}
+{% block title %}Dashboard - AWS Cost Optimizer{% endblock %}
+{% block page_title %}<i class="bi bi-speedometer2"></i> Cost Dashboard{% endblock %}
+
+{% block content %}
+<!-- ========== KPI CARDS ========== -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card kpi-card kpi-cyan h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="kpi-label">Last 30 Days Spend</div>
+                        <div class="kpi-value text-cyan">${{ summary.current_total|default('0.00') }}</div>
+                    </div>
+                    <i class="bi bi-currency-dollar kpi-icon" style="color: var(--accent-cyan);"></i>
+                </div>
+                {% if summary and summary.pct_change is defined %}
+                <span class="badge {{ 'bg-danger' if summary.pct_change > 0 else 'bg-success' }} mt-2">
+                    <i class="bi {{ 'bi-arrow-up' if summary.pct_change > 0 else 'bi-arrow-down' }}"></i>
+                    {{ summary.pct_change }}% vs prev 30d
+                </span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card kpi-card kpi-orange h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="kpi-label">Daily Average</div>
+                        <div class="kpi-value text-orange">${{ summary.daily_average|default('0.00') }}</div>
+                    </div>
+                    <i class="bi bi-calendar-day kpi-icon" style="color: var(--accent-orange);"></i>
+                </div>
+                <small style="color: var(--text-muted);">Last 30 days average</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card kpi-card kpi-purple h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="kpi-label">Top Service</div>
+                        <div class="kpi-value text-purple" style="font-size:1.1rem;">{{ summary.top_service|default('N/A') }}</div>
+                    </div>
+                    <i class="bi bi-trophy kpi-icon" style="color: var(--accent-purple);"></i>
+                </div>
+                <span style="color: var(--accent-purple);">${{ summary.top_service_cost|default('0.00') }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card kpi-card kpi-blue h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="kpi-label">Previous 30 Days</div>
+                        <div class="kpi-value text-blue">${{ summary.previous_total|default('0.00') }}</div>
+                    </div>
+                    <i class="bi bi-clock-history kpi-icon" style="color: var(--accent-blue);"></i>
+                </div>
+                <small style="color: var(--text-muted);">Comparison period</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== COMPUTE OPTIMIZER SUMMARY ========== -->
+{% if co_summary and co_summary.total_monthly_savings is defined %}
+<div class="section-title"><i class="bi bi-cpu"></i> AWS Compute Optimizer Insights</div>
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card optimizer-card h-100">
+            <div class="card-body text-center">
+                <div class="optimizer-savings-ring">
+                    <span class="optimizer-savings-value">${{ "%.2f"|format(co_summary.total_monthly_savings) }}</span>
+                    <span class="optimizer-savings-label">potential savings/mo</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <div class="card mini-stat h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-pc-display" style="color:var(--accent-cyan); font-size:1.2rem;"></i>
+                            <span class="mini-stat-label">EC2</span>
+                        </div>
+                        <div class="mini-stat-value">{{ co_summary.ec2.count|default(0) }} findings</div>
+                        <small style="color:var(--accent-cyan);">${{ "%.2f"|format(co_summary.ec2.savings|default(0)) }}/mo</small>
+                        {% if co_summary.ec2.over_provisioned|default(0) > 0 %}
+                        <div><span class="badge bg-warning mt-1">{{ co_summary.ec2.over_provisioned }} over-provisioned</span></div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card mini-stat h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-device-hdd" style="color:var(--accent-orange); font-size:1.2rem;"></i>
+                            <span class="mini-stat-label">EBS</span>
+                        </div>
+                        <div class="mini-stat-value">{{ co_summary.ebs.count|default(0) }} findings</div>
+                        <small style="color:var(--accent-orange);">${{ "%.2f"|format(co_summary.ebs.savings|default(0)) }}/mo</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card mini-stat h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-lightning" style="color:var(--accent-purple); font-size:1.2rem;"></i>
+                            <span class="mini-stat-label">Lambda</span>
+                        </div>
+                        <div class="mini-stat-value">{{ co_summary.lambda.count|default(0) }} findings</div>
+                        <small style="color:var(--accent-purple);">${{ "%.2f"|format(co_summary.get('lambda', {}).savings|default(0)) }}/mo</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card mini-stat h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-arrow-repeat" style="color:var(--accent-blue); font-size:1.2rem;"></i>
+                            <span class="mini-stat-label">Auto Scaling</span>
+                        </div>
+                        <div class="mini-stat-value">{{ co_summary.asg.count|default(0) }} findings</div>
+                        <small style="color:var(--accent-blue);">${{ "%.2f"|format(co_summary.asg.savings|default(0)) }}/mo</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card mini-stat h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-box" style="color:var(--accent-pink); font-size:1.2rem;"></i>
+                            <span class="mini-stat-label">ECS</span>
+                        </div>
+                        <div class="mini-stat-value">{{ co_summary.ecs.count|default(0) }} findings</div>
+                        <small style="color:var(--accent-pink);">${{ "%.2f"|format(co_summary.ecs.savings|default(0)) }}/mo</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card mini-stat h-100" style="border-color: rgba(6,214,160,0.3);">
+                    <div class="card-body d-flex flex-column justify-content-center align-items-center">
+                        <a href="/recommendations" class="btn btn-sm btn-outline-success">
+                            <i class="bi bi-arrow-right"></i> View Details
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ========== DAILY COST TREND + SERVICE DOUGHNUT ========== -->
+<div class="section-title"><i class="bi bi-activity"></i> Daily Spend Analysis</div>
+<div class="row g-3 mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-graph-up"></i> Daily Cost Trend (Last 30 Days)
+            </div>
+            <div class="card-body" style="height:320px;">
+                <canvas id="dailyCostChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-pie-chart"></i> Cost by Service (Top 10)
+            </div>
+            <div class="card-body" style="height:320px;">
+                <canvas id="serviceCostChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== AWS CONSOLE-STYLE: COST BY REGION + COST BY ACCOUNT ========== -->
+<div class="section-title"><i class="bi bi-globe2"></i> Cost Distribution (Console View)</div>
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-geo-alt"></i> Cost by Region
+            </div>
+            <div class="card-body" style="height:340px;">
+                <canvas id="regionCostChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-people"></i> Cost by Linked Account
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height:340px; overflow-y:auto;">
+                    <table class="table table-dark table-striped table-hover mb-0" style="font-size:0.82rem;">
+                        <thead><tr><th>Account ID</th><th class="text-end">Cost (USD)</th><th style="width:35%">Share</th></tr></thead>
+                        <tbody>
+                            {% set total_acct = account_costs|sum(attribute='cost') if account_costs else 1 %}
+                            {% for a in account_costs or [] %}
+                            <tr>
+                                <td><code>{{ a.account_id }}</code></td>
+                                <td class="text-end">${{ "%.2f"|format(a.cost) }}</td>
+                                <td>
+                                    <div class="progress" style="height:16px;">
+                                        <div class="progress-bar" style="width:{{ (a.cost / total_acct * 100)|round(1) }}%">
+                                            {{ (a.cost / total_acct * 100)|round(1) }}%
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-center py-3" style="color:var(--text-muted);">Single account or no data</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-receipt-cutoff"></i> Top Usage Types
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height:340px; overflow-y:auto;">
+                    <table class="table table-dark table-striped table-hover mb-0" style="font-size:0.78rem;">
+                        <thead><tr><th>Usage Type</th><th class="text-end">Cost</th></tr></thead>
+                        <tbody>
+                            {% for u in usage_type_costs or [] %}
+                            <tr>
+                                <td class="text-truncate" style="max-width:200px;" title="{{ u.usage_type }}">{{ u.usage_type }}</td>
+                                <td class="text-end text-nowrap">${{ "%.2f"|format(u.cost) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="2" class="text-center py-3" style="color:var(--text-muted);">No data</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== DAILY COST BY SERVICE (Stacked Area) ========== -->
+<div class="section-title"><i class="bi bi-layers"></i> Daily Cost by Service</div>
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-stack"></i> Daily Service Cost Breakdown</span>
+                <span class="badge bg-info">Last 30 Days</span>
+            </div>
+            <div class="card-body" style="height:380px;">
+                <canvas id="dailyServiceChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== MONTHLY COST BREAKDOWN ========== -->
+<div class="section-title"><i class="bi bi-calendar3"></i> Monthly Cost Overview</div>
+<div class="row g-3 mb-4">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-bar-chart"></i> Monthly Cost Trend (Last 6 Months)
+            </div>
+            <div class="card-body" style="height:320px;">
+                <canvas id="monthlyCostChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-5">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-receipt"></i> Month-wise Spend Summary
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Month</th>
+                                <th class="text-end">Total Cost</th>
+                                <th class="text-end">Change</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set mc_totals = monthly_costs.totals if monthly_costs and monthly_costs.totals else [] %}
+                            {% for m in mc_totals %}
+                            <tr>
+                                <td><i class="bi bi-calendar-month" style="color:var(--accent-cyan);"></i> {{ m.month }}</td>
+                                <td class="text-end">${{ "%.2f"|format(m.cost) }}</td>
+                                <td class="text-end">
+                                    {% if loop.index > 1 %}
+                                        {% set prev = mc_totals[loop.index0 - 1].cost %}
+                                        {% if prev > 0 %}
+                                            {% set change = ((m.cost - prev) / prev * 100)|round(1) %}
+                                            <span class="badge {{ 'bg-danger' if change > 0 else 'bg-success' }}">
+                                                <i class="bi {{ 'bi-arrow-up' if change > 0 else 'bi-arrow-down' }}"></i>
+                                                {{ change }}%
+                                            </span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span style="color:var(--text-muted);">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-center py-3" style="color:var(--text-muted);">No monthly data available</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== MONTHLY COST BY SERVICE TABLE ========== -->
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-grid-3x3"></i> Monthly Cost by Service
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    {% set mc_services = monthly_costs.services if monthly_costs and monthly_costs.services else [] %}
+                    {% set months_list = mc_totals|map(attribute='month')|list %}
+                    {% set all_services = mc_services|map(attribute='service')|unique|list %}
+                    <table class="table table-dark table-striped table-hover mb-0" style="font-size:0.82rem;">
+                        <thead>
+                            <tr>
+                                <th>Service</th>
+                                {% for mo in months_list %}
+                                <th class="text-end">{{ mo }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for svc in all_services[:15] %}
+                            <tr>
+                                <td>{{ svc }}</td>
+                                {% for mo in months_list %}
+                                    {% set ns = namespace(cost=0) %}
+                                    {% for item in mc_services if item.service == svc and item.month == mo %}
+                                        {% set ns.cost = item.cost %}
+                                    {% endfor %}
+                                    <td class="text-end">${{ "%.2f"|format(ns.cost) }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="{{ months_list|length + 1 }}" class="text-center py-3" style="color:var(--text-muted);">No data available</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== SERVICE BREAKDOWN TABLE + ANOMALIES ========== -->
+<div class="section-title"><i class="bi bi-table"></i> Service Details & Anomalies</div>
+<div class="row g-3 mb-4">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-list-ul"></i> Service Cost Breakdown (30 Days)
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Service</th>
+                                <th class="text-end">Cost (USD)</th>
+                                <th style="width:30%">Share</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set total_svc_cost = service_costs|sum(attribute='cost') if service_costs else 1 %}
+                            {% for svc in service_costs or [] %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td>{{ svc.service }}</td>
+                                <td class="text-end">${{ "%.2f"|format(svc.cost) }}</td>
+                                <td>
+                                    <div class="progress" style="height:18px;">
+                                        <div class="progress-bar" style="width:{{ (svc.cost / total_svc_cost * 100)|round(1) }}%">
+                                            {{ (svc.cost / total_svc_cost * 100)|round(1) }}%
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-5">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-exclamation-triangle"></i> Cost Anomalies
+            </div>
+            <div class="card-body">
+                {% if anomalies %}
+                {% for a in anomalies %}
+                <div class="alert alert-warning py-2 px-3 mb-2">
+                    <span class="anomaly-dot"></span><strong>{{ a.start_date }}</strong><br>
+                    <small>Impact: ${{ a.total_impact }} | Actual: ${{ a.actual_spend }}</small>
+                    {% if a.root_causes %}
+                    <br><small style="color:var(--text-muted);">{{ a.root_causes[0].get('Service','') }} - {{ a.root_causes[0].get('Region','') }}</small>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                {% else %}
+                <p class="mb-0" style="color:var(--text-muted);"><i class="bi bi-check-circle" style="color:var(--accent-cyan);"></i> No cost anomalies detected in the last 90 days.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ---- Chart.js global defaults for dark theme ----
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.04)';
+Chart.defaults.font.family = "'Inter', sans-serif";
+
+const PALETTE = ['#06d6a0','#4cc9f0','#7b61ff','#f72585','#ff9e00','#fbbf24','#20c997','#0d6efd','#ef476f','#6c757d'];
+
+// ---- Daily Cost Line ----
+fetch('/api/daily-costs')
+    .then(r => r.json())
+    .then(data => {
+        const ctx = document.getElementById('dailyCostChart');
+        const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 300);
+        gradient.addColorStop(0, 'rgba(6,214,160,0.25)');
+        gradient.addColorStop(1, 'rgba(6,214,160,0)');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.map(d => d.date),
+                datasets: [{
+                    label: 'Daily Cost ($)',
+                    data: data.map(d => d.cost),
+                    borderColor: '#06d6a0',
+                    backgroundColor: gradient,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: '#06d6a0',
+                    borderWidth: 2.5,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(17,24,39,0.9)',
+                        borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+                        titleColor: '#e2e8f0', bodyColor: '#06d6a0', titleFont: { weight: '600' },
+                        callbacks: { label: ctx => '$ ' + ctx.parsed.y.toFixed(2) }
+                    }
+                },
+                interaction: { intersect: false, mode: 'index' },
+                scales: {
+                    x: { grid: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+                    y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$' + v, font: { size: 10 } } }
+                }
+            }
+        });
+    });
+
+// ---- Service Doughnut ----
+fetch('/api/service-costs')
+    .then(r => r.json())
+    .then(data => {
+        new Chart(document.getElementById('serviceCostChart'), {
+            type: 'doughnut',
+            data: {
+                labels: data.map(d => d.service),
+                datasets: [{
+                    data: data.map(d => d.cost),
+                    backgroundColor: PALETTE.slice(0, data.length),
+                    borderWidth: 0, hoverOffset: 8,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '65%',
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'circle' } },
+                    tooltip: {
+                        backgroundColor: 'rgba(17,24,39,0.9)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+                        callbacks: { label: ctx => ctx.label + ': $' + ctx.parsed.toFixed(2) }
+                    }
+                }
+            }
+        });
+    });
+
+// ---- Region Cost Horizontal Bar ----
+fetch('/api/region-costs')
+    .then(r => r.json())
+    .then(data => {
+        new Chart(document.getElementById('regionCostChart'), {
+            type: 'bar',
+            data: {
+                labels: data.map(d => d.region),
+                datasets: [{
+                    label: 'Cost ($)',
+                    data: data.map(d => d.cost),
+                    backgroundColor: data.map((_, i) => PALETTE[i % PALETTE.length] + '99'),
+                    borderColor: data.map((_, i) => PALETTE[i % PALETTE.length]),
+                    borderWidth: 1.5, borderRadius: 6, barThickness: 22,
+                }]
+            },
+            options: {
+                indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(17,24,39,0.9)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+                        callbacks: { label: ctx => '$ ' + ctx.parsed.x.toFixed(2) }
+                    }
+                },
+                scales: {
+                    x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$' + v, font: { size: 10 } } },
+                    y: { grid: { display: false }, ticks: { font: { size: 10 } } }
+                }
+            }
+        });
+    });
+
+// ---- Daily Service Cost (Stacked Area Chart) ----
+fetch('/api/daily-service-costs')
+    .then(r => r.json())
+    .then(data => {
+        const ctx = document.getElementById('dailyServiceChart');
+        const datasets = data.services.map((svc, i) => {
+            const c = PALETTE[i % PALETTE.length];
+            return {
+                label: svc.service.replace('Amazon ', '').replace('AWS ', ''),
+                data: svc.costs, borderColor: c, backgroundColor: c + '30',
+                fill: true, tension: 0.3, pointRadius: 0, pointHoverRadius: 4, borderWidth: 1.5,
+            };
+        });
+        if (data.other && data.other.some(v => v > 0)) {
+            datasets.push({
+                label: 'Other', data: data.other, borderColor: '#6c757d',
+                backgroundColor: 'rgba(108,117,125,0.15)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1,
+            });
+        }
+        new Chart(ctx, {
+            type: 'line',
+            data: { labels: data.dates, datasets: datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'circle' } },
+                    tooltip: {
+                        mode: 'index', intersect: false,
+                        backgroundColor: 'rgba(17,24,39,0.9)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+                        callbacks: { label: ctx => ctx.dataset.label + ': $' + ctx.parsed.y.toFixed(2) }
+                    }
+                },
+                interaction: { intersect: false, mode: 'index' },
+                scales: {
+                    x: { stacked: true, grid: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+                    y: { stacked: true, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$' + v, font: { size: 10 } } }
+                }
+            }
+        });
+    });
+
+// ---- Monthly Cost Bar ----
+fetch('/api/monthly-costs')
+    .then(r => r.json())
+    .then(data => {
+        const totals = data.totals || [];
+        new Chart(document.getElementById('monthlyCostChart'), {
+            type: 'bar',
+            data: {
+                labels: totals.map(d => d.month),
+                datasets: [{
+                    label: 'Monthly Cost ($)',
+                    data: totals.map(d => d.cost),
+                    backgroundColor: totals.map((d, i, arr) => {
+                        if (i === 0) return 'rgba(6,214,160,0.7)';
+                        return d.cost > arr[i-1].cost ? 'rgba(239,71,111,0.7)' : 'rgba(6,214,160,0.7)';
+                    }),
+                    borderColor: totals.map((d, i, arr) => {
+                        if (i === 0) return '#06d6a0';
+                        return d.cost > arr[i-1].cost ? '#ef476f' : '#06d6a0';
+                    }),
+                    borderWidth: 1.5, borderRadius: 6, barThickness: 36,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(17,24,39,0.9)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+                        callbacks: { label: ctx => '$ ' + ctx.parsed.y.toFixed(2) }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                    y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$' + v, font: { size: 10 } } }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

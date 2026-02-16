@@ -1,23 +1,185 @@
-from flask import Flask, render_template, jsonify
+from datetime import datetime
+from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
 from config import Config
 from aws_services.cost_explorer import CostExplorerService
 from aws_services.recommendations import RecommendationService
 from aws_services.inventory import InventoryService
 from aws_services.savings_plans import SavingsPlansService
 from aws_services.news import AWSNewsService
+from aws_services.compute_optimizer import ComputeOptimizerService
+from aws_services.cost_agent import CostOptimizationAgent
+from aws_services import account_manager
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# Initialize services
+# Initialize services (they now use account_manager.get_session() internally)
 cost_service = CostExplorerService()
 recommendation_service = RecommendationService()
 inventory_service = InventoryService()
 savings_service = SavingsPlansService()
 news_service = AWSNewsService()
+compute_optimizer_service = ComputeOptimizerService()
+cost_agent = CostOptimizationAgent()
 
 
-# --- DASHBOARD ---
+@app.context_processor
+def inject_globals():
+    """Inject global template variables available in every template."""
+    active = account_manager.get_active_account()
+    accounts = account_manager.list_accounts()
+    return {
+        "now": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+        "active_account": active,
+        "all_accounts": accounts,
+    }
+
+
+# ================================================================== #
+#  ACCOUNT MANAGEMENT  (Vantage.sh-style integration)
+# ================================================================== #
+
+@app.route('/accounts')
+def accounts():
+    """Account management hub."""
+    accts = account_manager.list_accounts()
+    return render_template('accounts.html', accounts=accts)
+
+
+@app.route('/accounts/add', methods=['GET', 'POST'])
+def accounts_add():
+    """Add a new AWS account integration."""
+    if request.method == 'POST':
+        auth_type = request.form.get('auth_type', 'iam_role')
+        acct, msg = account_manager.add_account(
+            name=request.form.get('name', '').strip(),
+            aws_account_id=request.form.get('aws_account_id', '').strip(),
+            auth_type=auth_type,
+            role_arn=request.form.get('role_arn', '').strip(),
+            external_id=request.form.get('external_id', '').strip(),
+            access_key_id=request.form.get('access_key_id', '').strip(),
+            secret_access_key=request.form.get('secret_access_key', '').strip(),
+            region=request.form.get('region', '').strip() or None,
+        )
+        if acct:
+            flash(f"Account '{acct['name']}' added – {msg}", "success")
+        else:
+            flash(f"Failed to add account: {msg}", "danger")
+        return redirect(url_for('accounts'))
+
+    # GET – show form with CloudFormation info
+    cf_template = account_manager.get_cloudformation_template()
+    external_id = account_manager.EXTERNAL_ID_DEFAULT
+    return render_template('accounts_add.html',
+                           cf_template=cf_template,
+                           external_id=external_id)
+
+
+@app.route('/accounts/<account_id>/activate', methods=['POST'])
+def accounts_activate(account_id):
+    """Switch the active account."""
+    if account_manager.set_active_account(account_id):
+        acct = account_manager.get_account(account_id)
+        flash(f"Switched to account '{acct['name']}'", "success")
+    else:
+        flash("Account not found", "danger")
+    return redirect(request.referrer or url_for('accounts'))
+
+
+@app.route('/accounts/<account_id>/refresh', methods=['POST'])
+def accounts_refresh(account_id):
+    """Re-test connection for an account."""
+    acct = account_manager.refresh_account_status(account_id)
+    if acct:
+        flash(f"Connection test: {acct['status']} – {acct['status_message']}", "info")
+    else:
+        flash("Account not found", "danger")
+    return redirect(url_for('accounts'))
+
+
+@app.route('/accounts/<account_id>/delete', methods=['POST'])
+def accounts_delete(account_id):
+    """Remove an account integration."""
+    if account_manager.delete_account(account_id):
+        flash("Account removed", "success")
+    else:
+        flash("Account not found", "danger")
+    return redirect(url_for('accounts'))
+
+
+@app.route('/accounts/<account_id>/edit', methods=['GET', 'POST'])
+def accounts_edit(account_id):
+    """Edit an existing account."""
+    acct = account_manager.get_account(account_id)
+    if not acct:
+        flash("Account not found", "danger")
+        return redirect(url_for('accounts'))
+
+    if request.method == 'POST':
+        updated = account_manager.update_account(
+            account_id,
+            name=request.form.get('name', '').strip(),
+            auth_type=request.form.get('auth_type', acct['auth_type']),
+            role_arn=request.form.get('role_arn', '').strip(),
+            external_id=request.form.get('external_id', '').strip(),
+            access_key_id=request.form.get('access_key_id', '').strip(),
+            secret_access_key=request.form.get('secret_access_key', '').strip(),
+            region=request.form.get('region', '').strip() or Config.AWS_REGION,
+        )
+        if updated:
+            # Re-test after edit
+            account_manager.refresh_account_status(account_id)
+            flash("Account updated", "success")
+        return redirect(url_for('accounts'))
+
+    return render_template('accounts_edit.html', account=acct)
+
+
+@app.route('/accounts/refresh-all', methods=['POST'])
+def accounts_refresh_all():
+    """Re-test all account connections."""
+    account_manager.refresh_all_statuses()
+    flash("All connections refreshed", "info")
+    return redirect(url_for('accounts'))
+
+
+@app.route('/accounts/discover-org', methods=['POST'])
+def accounts_discover_org():
+    """Discover member accounts from AWS Organizations."""
+    org_accounts, err = account_manager.discover_org_accounts()
+    if err:
+        flash(f"Organization discovery error: {err}", "danger")
+    return render_template('accounts_org.html',
+                           org_accounts=org_accounts, error=err)
+
+
+@app.route('/api/accounts')
+def api_accounts():
+    """API: list accounts (for AJAX switcher)."""
+    accounts = account_manager.list_accounts()
+    # Strip secrets before sending to client
+    safe = []
+    for a in accounts:
+        safe.append({k: v for k, v in a.items()
+                     if k not in ('secret_access_key', 'access_key_id')})
+    return jsonify(safe)
+
+
+@app.route('/api/cf-template')
+def api_cf_template():
+    """API: download CloudFormation template."""
+    return app.response_class(
+        response=account_manager.get_cloudformation_template(),
+        status=200,
+        mimetype='application/json',
+        headers={'Content-Disposition': 'attachment; filename=aws-cost-optimizer-role.json'},
+    )
+
+
+# ================================================================== #
+#  DASHBOARD
+# ================================================================== #
+
 @app.route('/')
 def dashboard():
     try:
@@ -25,41 +187,85 @@ def dashboard():
         daily_costs = cost_service.get_daily_costs(days=30)
         service_costs = cost_service.get_cost_by_service()
         anomalies = cost_service.get_cost_anomalies()
+        monthly_costs = cost_service.get_monthly_cost_breakdown(months=6)
+        region_costs = cost_service.get_cost_by_region()
+        account_costs = cost_service.get_cost_by_account()
+        usage_type_costs = cost_service.get_cost_by_usage_type(top_n=15)
+        co_summary = compute_optimizer_service.get_optimization_summary()
         return render_template('dashboard.html',
                                summary=summary,
                                daily_costs=daily_costs,
                                service_costs=service_costs,
-                               anomalies=anomalies)
+                               anomalies=anomalies,
+                               monthly_costs=monthly_costs,
+                               region_costs=region_costs,
+                               account_costs=account_costs,
+                               usage_type_costs=usage_type_costs,
+                               co_summary=co_summary)
     except Exception as e:
-        return render_template('dashboard.html', error=str(e))
+        return render_template('dashboard.html',
+                               error=str(e),
+                               summary={},
+                               daily_costs=[],
+                               service_costs=[],
+                               anomalies=[],
+                               monthly_costs={'totals': [], 'services': []},
+                               region_costs=[],
+                               account_costs=[],
+                               usage_type_costs=[],
+                               co_summary={})
 
 
-# --- RECOMMENDATIONS ---
+# ================================================================== #
+#  RECOMMENDATIONS
+# ================================================================== #
+
 @app.route('/recommendations')
 def recommendations():
     try:
         rightsizing = recommendation_service.get_rightsizing_recommendations()
         trusted_advisor = recommendation_service.get_trusted_advisor_checks()
         idle_resources = recommendation_service.get_idle_resources()
+        co_ec2 = compute_optimizer_service.get_ec2_recommendations()
+        co_ebs = compute_optimizer_service.get_ebs_recommendations()
+        co_lambda = compute_optimizer_service.get_lambda_recommendations()
         return render_template('recommendations.html',
                                rightsizing=rightsizing,
                                trusted_advisor=trusted_advisor,
-                               idle_resources=idle_resources)
+                               idle_resources=idle_resources,
+                               co_ec2=co_ec2,
+                               co_ebs=co_ebs,
+                               co_lambda=co_lambda)
     except Exception as e:
-        return render_template('recommendations.html', error=str(e))
+        return render_template('recommendations.html',
+                               error=str(e),
+                               rightsizing=[],
+                               trusted_advisor=[],
+                               idle_resources=[],
+                               co_ec2={},
+                               co_ebs={},
+                               co_lambda={})
 
 
-# --- RESOURCE INVENTORY ---
+# ================================================================== #
+#  RESOURCE INVENTORY
+# ================================================================== #
+
 @app.route('/inventory')
 def inventory():
     try:
         resources = inventory_service.get_all_resources()
         return render_template('inventory.html', resources=resources)
     except Exception as e:
-        return render_template('inventory.html', error=str(e))
+        return render_template('inventory.html',
+                               error=str(e),
+                               resources={})
 
 
-# --- SAVINGS PLANS / RESERVATIONS ---
+# ================================================================== #
+#  SAVINGS PLANS / RESERVATIONS
+# ================================================================== #
+
 @app.route('/savings-plans')
 def savings_plans():
     try:
@@ -75,10 +281,19 @@ def savings_plans():
                                utilization=utilization,
                                sp_recommendations=sp_recommendations)
     except Exception as e:
-        return render_template('savings_plans.html', error=str(e))
+        return render_template('savings_plans.html',
+                               error=str(e),
+                               plans=[],
+                               ri_data=[],
+                               coverage={},
+                               utilization={},
+                               sp_recommendations=[])
 
 
-# --- FORECAST ---
+# ================================================================== #
+#  FORECAST
+# ================================================================== #
+
 @app.route('/forecast')
 def forecast():
     try:
@@ -88,20 +303,31 @@ def forecast():
                                forecast_data=forecast_data,
                                monthly_trend=monthly_trend)
     except Exception as e:
-        return render_template('forecast.html', error=str(e))
+        return render_template('forecast.html',
+                               error=str(e),
+                               forecast_data={},
+                               monthly_trend=[])
 
 
-# --- AWS NEWS ---
+# ================================================================== #
+#  AWS NEWS
+# ================================================================== #
+
 @app.route('/news')
 def news():
     try:
         articles = news_service.get_latest_news(limit=20)
         return render_template('news.html', articles=articles)
     except Exception as e:
-        return render_template('news.html', error=str(e))
+        return render_template('news.html',
+                               error=str(e),
+                               articles=[])
 
 
-# --- API ENDPOINTS (for AJAX charts) ---
+# ================================================================== #
+#  API ENDPOINTS (for AJAX charts)
+# ================================================================== #
+
 @app.route('/api/daily-costs')
 def api_daily_costs():
     data = cost_service.get_daily_costs(days=30)
@@ -112,10 +338,65 @@ def api_service_costs():
     data = cost_service.get_cost_by_service()
     return jsonify(data)
 
+@app.route('/api/monthly-costs')
+def api_monthly_costs():
+    data = cost_service.get_monthly_cost_breakdown(months=6)
+    return jsonify(data)
+
+@app.route('/api/daily-service-costs')
+def api_daily_service_costs():
+    data = cost_service.get_daily_costs_by_service(days=30, top_n=8)
+    return jsonify(data)
+
 @app.route('/api/forecast-data')
 def api_forecast_data():
     data = cost_service.get_cost_forecast(months=12)
     return jsonify(data)
+
+
+@app.route('/api/region-costs')
+def api_region_costs():
+    data = cost_service.get_cost_by_region()
+    return jsonify(data)
+
+
+@app.route('/api/account-costs')
+def api_account_costs():
+    data = cost_service.get_cost_by_account()
+    return jsonify(data)
+
+
+@app.route('/api/usage-type-costs')
+def api_usage_type_costs():
+    data = cost_service.get_cost_by_usage_type(top_n=15)
+    return jsonify(data)
+
+
+@app.route('/api/compute-optimizer')
+def api_compute_optimizer():
+    data = compute_optimizer_service.get_optimization_summary()
+    return jsonify(data)
+
+
+# ================================================================== #
+#  COST OPTIMIZATION AGENT
+# ================================================================== #
+
+@app.route('/agent')
+def agent_page():
+    """Cost Optimization Agent — intelligent FinOps advisor."""
+    return render_template('agent.html')
+
+
+@app.route('/api/agent/run', methods=['POST'])
+def api_agent_run():
+    """Run the full cost optimization agent analysis."""
+    try:
+        report = cost_agent.run_full_analysis()
+        return jsonify(report)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

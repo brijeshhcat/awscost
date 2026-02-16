@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Edit Account - AWS Cost Optimizer{% endblock %}
+{% block page_title %}<i class="bi bi-pencil"></i> Edit Account: {{ account.name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <div class="card bg-dark border-secondary">
+            <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-pencil-square"></i> Account Details</span>
+                <span class="badge {{ 'bg-success' if account.status == 'connected' else 'bg-danger' if account.status == 'error' else 'bg-warning' }}">
+                    {{ account.status }}
+                </span>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('accounts_edit', account_id=account.id) }}">
+                    <div class="mb-3">
+                        <label class="form-label">Display Name</label>
+                        <input type="text" name="name" class="form-control bg-dark border-secondary text-light" required
+                               value="{{ account.name }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">AWS Account ID</label>
+                        <input type="text" class="form-control bg-dark border-secondary text-muted" readonly
+                               value="{{ account.aws_account_id }}">
+                        <small class="text-muted">Cannot be changed. Remove and re-add if needed.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Region</label>
+                        <select name="region" class="form-select bg-dark border-secondary text-light">
+                            {% for r in ['us-east-1','us-east-2','us-west-1','us-west-2','eu-west-1','eu-west-2','eu-central-1','ap-south-1','ap-southeast-1','ap-southeast-2','ap-northeast-1','ca-central-1','sa-east-1'] %}
+                            <option value="{{ r }}" {{ 'selected' if account.region == r }}>{{ r }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Authentication Method</label>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="auth_type" id="authRole" value="iam_role"
+                                   {{ 'checked' if account.auth_type == 'iam_role' }}
+                                   onchange="toggleAuthFields()">
+                            <label class="form-check-label" for="authRole">IAM Cross-Account Role</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="auth_type" id="authKey" value="access_key"
+                                   {{ 'checked' if account.auth_type == 'access_key' }}
+                                   onchange="toggleAuthFields()">
+                            <label class="form-check-label" for="authKey">Access Keys</label>
+                        </div>
+                    </div>
+
+                    <!-- IAM Role fields -->
+                    <div id="roleFields" {{ 'style=display:none' if account.auth_type != 'iam_role' }}>
+                        <div class="mb-3">
+                            <label class="form-label">Role ARN</label>
+                            <input type="text" name="role_arn" class="form-control bg-dark border-secondary text-light"
+                                   value="{{ account.role_arn }}">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">External ID</label>
+                            <input type="text" name="external_id" class="form-control bg-dark border-secondary text-light"
+                                   value="{{ account.external_id }}">
+                        </div>
+                    </div>
+
+                    <!-- Access Key fields -->
+                    <div id="keyFields" {{ 'style=display:none' if account.auth_type != 'access_key' }}>
+                        <div class="mb-3">
+                            <label class="form-label">Access Key ID</label>
+                            <input type="text" name="access_key_id" class="form-control bg-dark border-secondary text-light"
+                                   value="{{ account.access_key_id }}" placeholder="AKIA...">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Secret Access Key</label>
+                            <input type="password" name="secret_access_key" class="form-control bg-dark border-secondary text-light"
+                                   value="{{ account.secret_access_key }}" placeholder="Leave blank to keep current">
+                        </div>
+                    </div>
+
+                    {% if account.status_message %}
+                    <div class="alert {{ 'alert-success' if account.status == 'connected' else 'alert-danger' }} small">
+                        <i class="bi bi-info-circle"></i> {{ account.status_message }}
+                    </div>
+                    {% endif %}
+
+                    <hr class="border-secondary">
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('accounts') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Back
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg"></i> Save Changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleAuthFields() {
+    const isRole = document.getElementById('authRole').checked;
+    document.getElementById('roleFields').style.display = isRole ? '' : 'none';
+    document.getElementById('keyFields').style.display = isRole ? 'none' : '';
+}
+</script>
+{% endblock %}

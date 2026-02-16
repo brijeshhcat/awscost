@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AWS Cost Optimizer{% endblock %}</title>
+    <!-- Inter Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="d-flex">
+        <nav id="sidebar" class="sidebar bg-dark border-end border-secondary">
+            <div class="sidebar-header p-3 border-bottom border-secondary">
+                <h5 class="mb-0 text-warning">
+                    <i class="bi bi-cloud-fill"></i> AWS Cost Optimizer
+                </h5>
+            </div>
+
+            <!-- Account Switcher -->
+            {% if all_accounts and all_accounts|length > 0 %}
+            <div class="px-2 pt-2 pb-1">
+                <div class="dropdown w-100">
+                    <button class="btn btn-outline-secondary btn-sm w-100 text-start d-flex align-items-center justify-content-between" data-bs-toggle="dropdown">
+                        <span class="text-truncate">
+                            {% if active_account %}
+                            <span class="badge rounded-pill {{ 'bg-success' if active_account.status == 'connected' else 'bg-danger' }} me-1" style="font-size:0.5rem;">&bull;</span>
+                            {{ active_account.name }}
+                            <small class="text-muted">({{ active_account.aws_account_id[-4:] }})</small>
+                            {% else %}
+                            <span class="text-muted">No account</span>
+                            {% endif %}
+                        </span>
+                        <i class="bi bi-chevron-expand ms-1"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-dark w-100">
+                        {% for acct in all_accounts %}
+                        <li>
+                            <form method="post" action="/accounts/{{ acct.id }}/activate">
+                                <button class="dropdown-item d-flex align-items-center {{ 'active' if acct.is_active }}" type="submit">
+                                    <span class="badge rounded-pill {{ 'bg-success' if acct.status == 'connected' else 'bg-danger' if acct.status == 'error' else 'bg-warning' }} me-2" style="font-size:0.5rem;">&bull;</span>
+                                    <span class="text-truncate">{{ acct.name }}</span>
+                                    <small class="text-muted ms-auto">{{ acct.aws_account_id[-4:] }}</small>
+                                </button>
+                            </form>
+                        </li>
+                        {% endfor %}
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-info" href="/accounts"><i class="bi bi-gear"></i> Manage Accounts</a></li>
+                        <li><a class="dropdown-item text-success" href="/accounts/add"><i class="bi bi-plus-lg"></i> Add Account</a></li>
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+
+            <ul class="nav flex-column p-2">
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="/">
+                        <i class="bi bi-speedometer2"></i> Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'recommendations' %}active{% endif %}" href="/recommendations">
+                        <i class="bi bi-lightbulb"></i> Recommendations
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'inventory' %}active{% endif %}" href="/inventory">
+                        <i class="bi bi-server"></i> Resource Inventory
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'savings_plans' %}active{% endif %}" href="/savings-plans">
+                        <i class="bi bi-piggy-bank"></i> Savings Plans / RI
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'forecast' %}active{% endif %}" href="/forecast">
+                        <i class="bi bi-graph-up-arrow"></i> Forecast
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'news' %}active{% endif %}" href="/news">
+                        <i class="bi bi-newspaper"></i> AWS News
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'agent_page' %}active{% endif %}" href="/agent">
+                        <i class="bi bi-robot"></i> Cost Agent
+                    </a>
+                </li>
+
+                <li class="nav-item mt-2 pt-2 border-top border-secondary">
+                    <a class="nav-link {% if request.endpoint and 'accounts' in request.endpoint %}active{% endif %}" href="/accounts">
+                        <i class="bi bi-cloud-plus"></i> AWS Accounts
+                        {% if all_accounts %}
+                        <span class="badge bg-secondary float-end">{{ all_accounts|length }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+            </ul>
+            <div class="sidebar-footer p-3 border-top border-secondary mt-auto">
+                {% if active_account %}
+                <small class="text-muted d-block">Account: {{ active_account.name }}</small>
+                <small class="text-muted">Region: {{ active_account.region }}</small>
+                {% else %}
+                <small class="text-muted">Region: {{ config.get('AWS_REGION', 'us-east-1') }}</small>
+                {% endif %}
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <div class="flex-grow-1">
+            <!-- Top Navbar -->
+            <nav class="navbar navbar-dark top-navbar px-3">
+                <button class="btn btn-outline-secondary btn-sm d-md-none" onclick="toggleSidebar()">
+                    <i class="bi bi-list"></i>
+                </button>
+                <span class="navbar-text page-title-text">
+                    {% block page_title %}Dashboard{% endblock %}
+                </span>
+                <span class="navbar-text small" style="color: var(--text-muted);">
+                    <i class="bi bi-clock"></i> {{ now }}
+                </span>
+            </nav>
+
+            <main class="p-4">
+                <!-- Flash messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                    <i class="bi {{ 'bi-check-circle-fill' if category == 'success' else 'bi-exclamation-triangle-fill' if category == 'error' or category == 'danger' else 'bi-info-circle-fill' }}"></i>
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+                {% endif %}
+                {% endwith %}
+
+                {% if error is defined and error %}
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>Error:</strong> {{ error }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endif %}
+
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('collapsed');
+        }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
